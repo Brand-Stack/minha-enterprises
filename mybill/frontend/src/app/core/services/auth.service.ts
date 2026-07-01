@@ -84,13 +84,22 @@ export class AuthService {
   }
 
   private getApiUrl(): string {
-    // If in browser, use window.location.hostname
     if (typeof window !== 'undefined' && window.location) {
+      const protocol = window.location.protocol;
       const hostname = window.location.hostname;
-      // Always use HTTP (not HTTPS) for API calls
+      
+      if (protocol === 'https:') {
+        // Option A: Reverse Proxy (Nginx) proxying /api requests to port 1104 (Recommended)
+        return `https://${hostname}/api`;
+        
+        // Option B: Spring Boot directly running SSL on port 1104
+        // To use Option B, uncomment the line below and comment out Option A above:
+        // return `https://${hostname}:1104/api`;
+      }
+      
+      // Local development or HTTP access
       return `http://${hostname}:1104/api`;
     }
-    // Fallback to environment config
     return environment.apiUrl;
   }
 }

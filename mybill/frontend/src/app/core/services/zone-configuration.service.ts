@@ -18,7 +18,20 @@ export class ZoneConfigurationService {
 
     private getApiUrl(): string {
         if (typeof window !== 'undefined' && window.location) {
-            return `http://${window.location.hostname}:1104/api`;
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            
+            if (protocol === 'https:') {
+                // Option A: Reverse Proxy (Nginx) proxying /api requests to port 1104 (Recommended)
+                return `https://${hostname}/api`;
+                
+                // Option B: Spring Boot directly running SSL on port 1104
+                // To use Option B, uncomment the line below and comment out Option A above:
+                // return `https://${hostname}:1104/api`;
+            }
+            
+            // Local development or HTTP access
+            return `http://${hostname}:1104/api`;
         }
         return environment.apiUrl;
     }
