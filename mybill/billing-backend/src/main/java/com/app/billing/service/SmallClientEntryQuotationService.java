@@ -82,6 +82,10 @@ public class SmallClientEntryQuotationService {
         entity.setTitle(customerName + " - " + entity.getMonth() + " " + entity.getYear());
         if (dto.getInvoiceDate() != null) {
             entity.setInvoiceDate(dto.getInvoiceDate());
+        }
+        if (StringUtils.hasText(dto.getInvoiceNumber())) {
+            entity.setInvoiceNumber(dto.getInvoiceNumber().trim());
+        } else if (dto.getInvoiceDate() != null) {
             entity.setInvoiceNumber(generateNextInvoiceNumberForDate(dto.getInvoiceDate()));
         }
         entity.setTotalShipments(0);
@@ -102,6 +106,15 @@ public class SmallClientEntryQuotationService {
         existing.setZone(dto.getZone());
         if (dto.getInvoiceDate() != null) {
             existing.setInvoiceDate(dto.getInvoiceDate());
+        }
+        if (dto.getInvoiceNumber() != null) {
+            if (StringUtils.hasText(dto.getInvoiceNumber())) {
+                existing.setInvoiceNumber(dto.getInvoiceNumber().trim());
+            } else if (existing.getInvoiceDate() != null) {
+                existing.setInvoiceNumber(generateNextInvoiceNumberForDate(existing.getInvoiceDate()));
+            } else {
+                existing.setInvoiceNumber(null);
+            }
         }
         if (dto.getCustomerId() != null) {
             existing.setCustomerId(dto.getCustomerId());

@@ -94,28 +94,43 @@ public class EmailDispatchService {
 
             mailSender.send(mimeMessage);
         } catch (org.springframework.mail.MailAuthenticationException e) {
-            log.error("SMTP Authentication failed: {}", e.getMessage());
-            throw new RuntimeException("Authentication failed.", e);
+            log.error("SMTP Authentication failed: {}", e.getMessage(), e);
+            throw new RuntimeException("SMTP authentication failed.", e);
         } catch (org.springframework.mail.MailSendException e) {
-            log.error("Failed to send email due to mail send exception", e);
+            log.error("Failed to send email due to MailSendException", e);
             Throwable rootCause = e.getMostSpecificCause();
             String rootMessage = rootCause != null ? rootCause.getMessage() : "";
-            
-            if (rootCause instanceof java.net.ConnectException || 
+
+            if (rootMessage.contains("Authentication") || rootMessage.contains("Username and Password not accepted") || rootMessage.contains("535 5.7.8")) {
+                throw new RuntimeException("SMTP authentication failed.", e);
+            }
+
+            String host = "smtp.gmail.com";
+            int port = 465;
+            if (mailSender instanceof org.springframework.mail.javamail.JavaMailSenderImpl) {
+                org.springframework.mail.javamail.JavaMailSenderImpl impl = (org.springframework.mail.javamail.JavaMailSenderImpl) mailSender;
+                host = impl.getHost();
+                port = impl.getPort();
+            }
+
+            if (rootCause instanceof java.net.ConnectException ||
                 rootCause instanceof java.net.SocketException ||
+                rootCause instanceof java.net.SocketTimeoutException ||
                 rootMessage.contains("Connection timed out") ||
                 rootMessage.contains("timed out") ||
-                rootMessage.contains("connect")) {
-                throw new RuntimeException("Unable to connect to mail server.", e);
+                rootMessage.contains("connect") ||
+                rootMessage.contains("Connection refused")) {
+                
+                String diagnosis = diagnoseConnectionFailure(host, port);
+                throw new RuntimeException(diagnosis, e);
             }
-            if (rootCause instanceof java.net.UnknownHostException || 
+
+            if (rootCause instanceof java.net.UnknownHostException ||
                 rootMessage.contains("unreachable") ||
                 rootMessage.contains("UnknownHost")) {
-                throw new RuntimeException("SMTP server is unreachable.", e);
+                throw new RuntimeException("Unable to connect to SMTP server.", e);
             }
-            if (rootMessage.contains("Authentication") || rootMessage.contains("Username and Password not accepted")) {
-                throw new RuntimeException("Authentication failed.", e);
-            }
+
             throw new RuntimeException("Email configuration is invalid.", e);
         } catch (Exception e) {
             log.error("Failed to send email to {}", java.util.Arrays.toString(toAddresses), e);
@@ -124,16 +139,62 @@ public class EmailDispatchService {
                 cause = cause.getCause();
             }
             String msg = cause.getMessage() != null ? cause.getMessage() : "";
-            if (msg.contains("Connection timed out") || msg.contains("ConnectException") || msg.contains("SocketTimeoutException")) {
-                throw new RuntimeException("Unable to connect to mail server.", e);
+
+            if (msg.contains("Authentication") || msg.contains("Username and Password not accepted") || msg.contains("AuthenticationFailedException")) {
+                throw new RuntimeException("SMTP authentication failed.", e);
+            }
+
+            String host = "smtp.gmail.com";
+            int port = 465;
+            if (mailSender instanceof org.springframework.mail.javamail.JavaMailSenderImpl) {
+                org.springframework.mail.javamail.JavaMailSenderImpl impl = (org.springframework.mail.javamail.JavaMailSenderImpl) mailSender;
+                host = impl.getHost();
+                port = impl.getPort();
+            }
+
+            if (msg.contains("Connection timed out") || msg.contains("ConnectException") || msg.contains("SocketTimeoutException") || msg.contains("Connection refused")) {
+                String diagnosis = diagnoseConnectionFailure(host, port);
+                throw new RuntimeException(diagnosis, e);
             }
             if (msg.contains("UnknownHostException") || msg.contains("unreachable")) {
-                throw new RuntimeException("SMTP server is unreachable.", e);
-            }
-            if (msg.contains("Authentication") || msg.contains("Username and Password not accepted") || msg.contains("AuthenticationFailedException")) {
-                throw new RuntimeException("Authentication failed.", e);
+                throw new RuntimeException("Unable to connect to SMTP server.", e);
             }
             throw new RuntimeException("Email configuration is invalid.", e);
+        }
+    }
+
+    private String diagnoseConnectionFailure(String host, int port) {
+        log.info("Running SMTP connection diagnostics to {}:{}", host, port);
+        
+        // 1. DNS Resolution Check
+        try {
+            java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(host);
+            if (addresses == null || addresses.length == 0) {
+                log.error("DNS Resolution returned no IP addresses for host: {}", host);
+                return "Unable to connect to SMTP server.";
+            }
+            log.info("DNS resolved successfully for host: {} -> {}", host, java.util.Arrays.toString(addresses));
+        } catch (java.net.UnknownHostException e) {
+            log.error("DNS resolution failed for host: {}", host, e);
+            return "Unable to connect to SMTP server.";
+        }
+
+        // 2. Outbound check to verify general internet connectivity (connect to google.com:443)
+        boolean generalInternetWorks = false;
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress("google.com", 443), 3000);
+            generalInternetWorks = true;
+            log.info("General outbound internet connectivity check (google.com:443) succeeded.");
+        } catch (Exception e) {
+            log.warn("General outbound internet connectivity check (google.com:443) failed: {}", e.getMessage());
+        }
+
+        if (generalInternetWorks) {
+            log.error("General internet works, but SMTP connection to {}:{} timed out/failed. Outbound SMTP traffic on port {} is blocked by server firewall or cloud provider.", host, port, port);
+            return "Server is blocking outbound SMTP traffic.";
+        } else {
+            log.error("SMTP connection to {}:{} failed, and general internet check also failed. Network is offline or unreachable.", host, port);
+            return "SMTP connection timed out.";
         }
     }
 }
