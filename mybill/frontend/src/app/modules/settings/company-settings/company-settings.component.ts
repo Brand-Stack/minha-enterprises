@@ -39,8 +39,8 @@ interface CompanySettings {
   logoPath?: string;
   logoBase64?: string;
   invoiceNumberMode?: string;
-  invoicePrefix?: string;
-  estimatePrefix?: string;
+  lastSeriesNo?: number;
+  year?: number;
   invoiceStartingSequence?: number;
   couriers?: string[];
   items?: string[];
@@ -186,15 +186,15 @@ interface CompanySettings {
                 <div class="w-full"></div>
 
                 <mat-form-field appearance="outline" class="w-full">
-                  <mat-label>Invoice Prefix</mat-label>
-                  <input matInput formControlName="invoicePrefix" placeholder="e.g., INV-, BILL-">
-                  <mat-hint>Prefix for GST invoices (e.g., INV-001)</mat-hint>
+                  <mat-label>Last Series No</mat-label>
+                  <input matInput type="number" formControlName="lastSeriesNo" placeholder="e.g., 123">
+                  <mat-hint>The last generated series number (e.g. 123)</mat-hint>
                 </mat-form-field>
 
                 <mat-form-field appearance="outline" class="w-full">
-                  <mat-label>Estimate Prefix</mat-label>
-                  <input matInput formControlName="estimatePrefix" placeholder="e.g., EST-, QUO-">
-                  <mat-hint>Prefix for estimates (e.g., EST-001)</mat-hint>
+                  <mat-label>Year</mat-label>
+                  <input matInput type="number" formControlName="year" placeholder="e.g., 2026">
+                  <mat-hint>The starting year of the Financial Year (e.g. 2026)</mat-hint>
                 </mat-form-field>
 
                 <mat-form-field appearance="outline" class="w-full">
@@ -387,8 +387,8 @@ export class CompanySettingsComponent implements OnInit, AfterViewInit {
       footerSlogan: ['Thank you for your business!'],
       printFormat: ['A4', Validators.required],
       invoiceNumberMode: ['AUTO'],
-      invoicePrefix: ['INV-'],
-      estimatePrefix: ['EST-'],
+      lastSeriesNo: [null as number | null, [Validators.min(0)]],
+      year: [null as number | null, [Validators.min(1000), Validators.max(9999)]],
       invoiceStartingSequence: [1, [Validators.min(1)]],
       couriersInput: [''],
       itemsInput: [''],
@@ -454,8 +454,8 @@ export class CompanySettingsComponent implements OnInit, AfterViewInit {
           footerSlogan: settings.footerSlogan || 'Thank you for your business!',
           printFormat: settings.printFormat || 'A4',
           invoiceNumberMode: settings.invoiceNumberMode || 'AUTO',
-          invoicePrefix: settings.invoicePrefix || 'INV-',
-          estimatePrefix: settings.estimatePrefix || 'EST-',
+          lastSeriesNo: settings.lastSeriesNo ?? null,
+          year: settings.year ?? null,
           invoiceStartingSequence: settings.invoiceStartingSequence != null && settings.invoiceStartingSequence > 0
             ? settings.invoiceStartingSequence : 1,
           couriersInput: settings.couriers ? settings.couriers.join(', ') : '',
@@ -555,8 +555,8 @@ export class CompanySettingsComponent implements OnInit, AfterViewInit {
       printFormat: formValue.printFormat,
       logoBase64: formValue.logoBase64 || null,
       invoiceNumberMode: formValue.invoiceNumberMode || 'AUTO',
-      invoicePrefix: formValue.invoicePrefix || 'INV-',
-      estimatePrefix: formValue.estimatePrefix || 'EST-',
+      lastSeriesNo: formValue.lastSeriesNo != null ? Number(formValue.lastSeriesNo) : undefined,
+      year: formValue.year != null ? Number(formValue.year) : undefined,
       invoiceStartingSequence: Math.max(1, Math.floor(Number(formValue.invoiceStartingSequence) || 1)),
       couriers: formValue.couriersInput ? formValue.couriersInput.split(',').map((s: string) => s.trim()).filter((s: string) => s) : [],
       items: formValue.itemsInput ? formValue.itemsInput.split(',').map((s: string) => s.trim()).filter((s: string) => s) : [],

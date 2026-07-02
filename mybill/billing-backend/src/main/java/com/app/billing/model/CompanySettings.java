@@ -53,8 +53,8 @@ public class CompanySettings extends BaseEntity {
     
     // Invoice Number Configuration
     private String invoiceNumberMode; // AUTO or MANUAL
-    private String invoicePrefix; // Prefix for GST invoices (e.g., "INV-", "BILL-")
-    private String estimatePrefix; // Prefix for estimates (e.g., "EST-", "QUO-")
+    private Integer lastSeriesNo; // Last generated sequence number
+    private Integer year; // Current active financial year (starting year e.g. 2026)
     /** Starting sequence for FY invoice numbers (Client/Small Client Entry). Default 1 → 001/2026. */
     private Integer invoiceStartingSequence;
     

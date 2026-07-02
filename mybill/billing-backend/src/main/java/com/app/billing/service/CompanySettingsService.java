@@ -96,8 +96,8 @@ public class CompanySettingsService {
                 .logoPath(dto.getLogoPath())
                 .logoBase64(dto.getLogoBase64())
                 .invoiceNumberMode(dto.getInvoiceNumberMode() != null ? dto.getInvoiceNumberMode() : "AUTO")
-                .invoicePrefix(dto.getInvoicePrefix() != null ? dto.getInvoicePrefix() : "INV-")
-                .estimatePrefix(dto.getEstimatePrefix() != null ? dto.getEstimatePrefix() : "EST-")
+                .lastSeriesNo(dto.getLastSeriesNo())
+                .year(dto.getYear())
                 .invoiceStartingSequence(dto.getInvoiceStartingSequence() != null && dto.getInvoiceStartingSequence() > 0
                         ? dto.getInvoiceStartingSequence() : 1)
                 .bankAccounts(mapBankAccountsToEntity(dto.getBankAccounts()))
@@ -134,8 +134,8 @@ public class CompanySettingsService {
         if (dto.getLogoPath() != null) entity.setLogoPath(dto.getLogoPath());
         if (dto.getLogoBase64() != null) entity.setLogoBase64(dto.getLogoBase64());
         if (dto.getInvoiceNumberMode() != null) entity.setInvoiceNumberMode(dto.getInvoiceNumberMode());
-        if (dto.getInvoicePrefix() != null) entity.setInvoicePrefix(dto.getInvoicePrefix());
-        if (dto.getEstimatePrefix() != null) entity.setEstimatePrefix(dto.getEstimatePrefix());
+        entity.setLastSeriesNo(dto.getLastSeriesNo());
+        entity.setYear(dto.getYear());
         if (dto.getInvoiceStartingSequence() != null) {
             entity.setInvoiceStartingSequence(dto.getInvoiceStartingSequence() > 0 ? dto.getInvoiceStartingSequence() : 1);
         }
@@ -186,8 +186,8 @@ public class CompanySettingsService {
                 .logoPath(entity.getLogoPath())
                 .logoBase64(entity.getLogoBase64())
                 .invoiceNumberMode(entity.getInvoiceNumberMode())
-                .invoicePrefix(entity.getInvoicePrefix())
-                .estimatePrefix(entity.getEstimatePrefix())
+                .lastSeriesNo(entity.getLastSeriesNo())
+                .year(entity.getYear())
                 .invoiceStartingSequence(entity.getInvoiceStartingSequence() != null && entity.getInvoiceStartingSequence() > 0
                         ? entity.getInvoiceStartingSequence() : 1)
                 .bankAccounts(mapBankAccountsToDto(entity.getBankAccounts()))

@@ -93,9 +93,47 @@ public class EmailDispatchService {
             }
 
             mailSender.send(mimeMessage);
+        } catch (org.springframework.mail.MailAuthenticationException e) {
+            log.error("SMTP Authentication failed: {}", e.getMessage());
+            throw new RuntimeException("Authentication failed.", e);
+        } catch (org.springframework.mail.MailSendException e) {
+            log.error("Failed to send email due to mail send exception", e);
+            Throwable rootCause = e.getMostSpecificCause();
+            String rootMessage = rootCause != null ? rootCause.getMessage() : "";
+            
+            if (rootCause instanceof java.net.ConnectException || 
+                rootCause instanceof java.net.SocketException ||
+                rootMessage.contains("Connection timed out") ||
+                rootMessage.contains("timed out") ||
+                rootMessage.contains("connect")) {
+                throw new RuntimeException("Unable to connect to mail server.", e);
+            }
+            if (rootCause instanceof java.net.UnknownHostException || 
+                rootMessage.contains("unreachable") ||
+                rootMessage.contains("UnknownHost")) {
+                throw new RuntimeException("SMTP server is unreachable.", e);
+            }
+            if (rootMessage.contains("Authentication") || rootMessage.contains("Username and Password not accepted")) {
+                throw new RuntimeException("Authentication failed.", e);
+            }
+            throw new RuntimeException("Email configuration is invalid.", e);
         } catch (Exception e) {
             log.error("Failed to send email to {}", java.util.Arrays.toString(toAddresses), e);
-            throw new RuntimeException("Failed to send email: " + e.getMessage(), e);
+            Throwable cause = e;
+            while (cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            String msg = cause.getMessage() != null ? cause.getMessage() : "";
+            if (msg.contains("Connection timed out") || msg.contains("ConnectException") || msg.contains("SocketTimeoutException")) {
+                throw new RuntimeException("Unable to connect to mail server.", e);
+            }
+            if (msg.contains("UnknownHostException") || msg.contains("unreachable")) {
+                throw new RuntimeException("SMTP server is unreachable.", e);
+            }
+            if (msg.contains("Authentication") || msg.contains("Username and Password not accepted") || msg.contains("AuthenticationFailedException")) {
+                throw new RuntimeException("Authentication failed.", e);
+            }
+            throw new RuntimeException("Email configuration is invalid.", e);
         }
     }
 }
