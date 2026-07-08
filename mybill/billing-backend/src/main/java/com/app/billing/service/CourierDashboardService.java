@@ -268,12 +268,13 @@ public class CourierDashboardService {
         List<CourierDashboardDto.DailyPoint> dailyTrend = buildDailyBookingTrend(chartEntries, today, rangeFrom, rangeTo, rangeActive);
 
         Map<String, BigDecimal> monthBuckets = new TreeMap<>();
-        for (MonthlyCourierEntry e : chartEntries) {
-            if (e.getEntryDate() == null || e.getAmount() == null) {
+        for (MonthlyCourierQuotation q : quotationsById.values()) {
+            if (rangeActive && !isQuotationInRange(q, rangeFrom, rangeTo)) {
                 continue;
             }
-            String key = e.getEntryDate().getYear() + "-" + String.format("%02d", e.getEntryDate().getMonthValue());
-            monthBuckets.merge(key, BigDecimal.valueOf(e.getAmount()), BigDecimal::add);
+            double qAmt = q.getTotalAmount() != null ? q.getTotalAmount() : 0.0;
+            String key = q.getYear() + "-" + String.format("%02d", monthToInt(q.getMonth()));
+            monthBuckets.merge(key, BigDecimal.valueOf(qAmt), BigDecimal::add);
         }
         List<CourierDashboardDto.MonthlyRevenuePoint> monthTrend = monthBuckets.entrySet().stream()
                 .map(en -> CourierDashboardDto.MonthlyRevenuePoint.builder().monthKey(en.getKey()).revenue(en.getValue()).build())
@@ -286,13 +287,13 @@ public class CourierDashboardService {
                 .collect(Collectors.toList());
 
         Map<String, BigDecimal> clientRev = new HashMap<>();
-        for (MonthlyCourierEntry e : chartEntries) {
-            if (e.getAmount() == null) {
+        for (MonthlyCourierQuotation q : quotationsById.values()) {
+            if (rangeActive && !isQuotationInRange(q, rangeFrom, rangeTo)) {
                 continue;
             }
-            String qid = e.getMonthlyQuotationId();
-            String name = quotationIdToClient.getOrDefault(qid, "Unknown");
-            clientRev.merge(name, BigDecimal.valueOf(e.getAmount()), BigDecimal::add);
+            double qAmt = q.getTotalAmount() != null ? q.getTotalAmount() : 0.0;
+            String name = q.getCustomerName() != null ? q.getCustomerName() : "Unknown";
+            clientRev.merge(name, BigDecimal.valueOf(qAmt), BigDecimal::add);
         }
         List<CourierDashboardDto.ClientRevenue> topClients = clientRev.entrySet().stream()
                 .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
@@ -1154,5 +1155,36 @@ public class CourierDashboardService {
                 .cashBookingAwbGroups(List.of())
                 .smallClientEntryAwbGroups(List.of())
                 .build();
+    }
+
+    private static int monthToInt(String m) {
+        if (m == null) return 1;
+        return switch (m.toUpperCase()) {
+            case "JANUARY" -> 1;
+            case "FEBRUARY" -> 2;
+            case "MARCH" -> 3;
+            case "APRIL" -> 4;
+            case "MAY" -> 5;
+            case "JUNE" -> 6;
+            case "JULY" -> 7;
+            case "AUGUST" -> 8;
+            case "SEPTEMBER" -> 9;
+            case "OCTOBER" -> 10;
+            case "NOVEMBER" -> 11;
+            case "DECEMBER" -> 12;
+            default -> 1;
+        };
+    }
+
+    private static boolean isQuotationInRange(MonthlyCourierQuotation q, LocalDate from, LocalDate to) {
+        if (from == null && to == null) return true;
+        int monthVal = monthToInt(q.getMonth());
+        int yearVal = q.getYear() != null ? q.getYear() : LocalDate.now().getYear();
+        try {
+            LocalDate qDate = LocalDate.of(yearVal, monthVal, 15);
+            return isDateInRange(qDate, from, to);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 }

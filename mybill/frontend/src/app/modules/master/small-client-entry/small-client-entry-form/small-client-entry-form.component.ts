@@ -91,8 +91,8 @@ import { formatLocalDateOnly, parseIsoDateToLocal } from '../../../../core/utils
             </mat-form-field>
             <mat-form-field appearance="outline" *ngIf="quotationId">
               <mat-label>Invoice No</mat-label>
-              <input matInput formControlName="invoiceNumber" readonly placeholder="Auto-generated">
-              <mat-hint>Auto-generated on invoice creation (e.g. 001/2026)</mat-hint>
+              <input matInput formControlName="invoiceNumber" placeholder="Leave blank to auto-generate">
+              <mat-hint>Enter custom Invoice No or leave blank to auto-generate</mat-hint>
             </mat-form-field>
             <mat-form-field appearance="outline" *ngIf="quotationId">
               <mat-label>Invoice Date</mat-label>
@@ -1341,6 +1341,7 @@ export class SmallClientEntryFormComponent implements OnInit {
       month: v.month,
       year: v.year,
       title: v.title,
+      invoiceNumber: v.invoiceNumber ?? undefined,
       invoiceDate: formatLocalDateOnly(v.invoiceDate),
       note: v.note ?? undefined,
       fuelChargePercentage: v.fuelChargePercentage != null && v.fuelChargePercentage !== '' ? Number(v.fuelChargePercentage) : null,

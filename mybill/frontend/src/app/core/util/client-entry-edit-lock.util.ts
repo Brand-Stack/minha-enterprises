@@ -26,9 +26,17 @@ export function isClientEntryRecordLocked(month: string | null | undefined, year
   if (!record) return false;
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1;
+  const dayOfMonth = today.getDate();
   const recordKey = record.year * 12 + record.month;
   const currentKey = currentYear * 12 + currentMonth;
-  return recordKey < currentKey - 1;
+  
+  if (dayOfMonth <= 5) {
+    // Case A: Allow current month and previous month
+    return recordKey < currentKey - 1;
+  } else {
+    // Case B: Allow only current month
+    return recordKey < currentKey;
+  }
 }
 
 export function canEditClientEntryRecord(

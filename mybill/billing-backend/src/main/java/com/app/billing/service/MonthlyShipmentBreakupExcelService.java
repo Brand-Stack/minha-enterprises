@@ -68,6 +68,11 @@ public class MonthlyShipmentBreakupExcelService {
     }
 
     public byte[] generate(List<MonthlyCourierEntryDto> entries, boolean includeAmount, boolean includeWeight, Map<String, String> zoneIdToName) {
+        return generate(entries, includeAmount, includeWeight, zoneIdToName, null);
+    }
+
+    public byte[] generate(List<MonthlyCourierEntryDto> entries, boolean includeAmount, boolean includeWeight, Map<String, String> zoneIdToName,
+            MonthlyCourierInvoiceGrandTotalService.PdfInvoiceTotals totals) {
         entries = MonthlyCourierBreakupSortUtil.sortedCopy(entries);
         try (Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -125,6 +130,70 @@ public class MonthlyShipmentBreakupExcelService {
                         cell.setCellStyle(dataStyle);
                     }
                 }
+            }
+
+            if (includeAmount && totals != null) {
+                // Add blank row
+                Row blankRow = sheet.createRow(rowIdx++);
+                
+                // Add Domestic / International Courier Charges
+                Row rBase = sheet.createRow(rowIdx++);
+                rBase.createCell(0).setCellValue("Domestic / International Courier Charges :");
+                rBase.createCell(columnCount - 1).setCellValue(totals.baseAmount());
+                rBase.getCell(0).setCellStyle(headerStyle);
+                rBase.getCell(columnCount - 1).setCellStyle(dataStyle);
+                
+                // Add Fuel Charges
+                Row rFuel = sheet.createRow(rowIdx++);
+                rFuel.createCell(0).setCellValue("Fuel Charges @ " + String.format("%.2f", totals.fuelPct()) + "% :");
+                rFuel.createCell(columnCount - 1).setCellValue(totals.fuelAmount());
+                rFuel.getCell(0).setCellStyle(headerStyle);
+                rFuel.getCell(columnCount - 1).setCellStyle(dataStyle);
+                
+                // Add FOV Charges
+                if (totals.fovAmount() > 0.005) {
+                    Row rFov = sheet.createRow(rowIdx++);
+                    rFov.createCell(0).setCellValue("FOV Charges @ " + String.format("%.2f", totals.fovPct()) + "% :");
+                    rFov.createCell(columnCount - 1).setCellValue(totals.fovAmount());
+                    rFov.getCell(0).setCellStyle(headerStyle);
+                    rFov.getCell(columnCount - 1).setCellStyle(dataStyle);
+                }
+                
+                // Add SUB TOTAL
+                Row rSub = sheet.createRow(rowIdx++);
+                rSub.createCell(0).setCellValue("SUB TOTAL :");
+                rSub.createCell(columnCount - 1).setCellValue(totals.subTotal());
+                rSub.getCell(0).setCellStyle(headerStyle);
+                rSub.getCell(columnCount - 1).setCellStyle(headerStyle);
+                
+                // Add CGST
+                double cgstHalfPct = totals.gstPct() / 2.0;
+                Row rCgst = sheet.createRow(rowIdx++);
+                rCgst.createCell(0).setCellValue("CGST @ " + String.format("%.1f", cgstHalfPct) + "% :");
+                rCgst.createCell(columnCount - 1).setCellValue(totals.cgst());
+                rCgst.getCell(0).setCellStyle(headerStyle);
+                rCgst.getCell(columnCount - 1).setCellStyle(dataStyle);
+                
+                // Add SGST
+                Row rSgst = sheet.createRow(rowIdx++);
+                rSgst.createCell(0).setCellValue("SGST @ " + String.format("%.1f", cgstHalfPct) + "% :");
+                rSgst.createCell(columnCount - 1).setCellValue(totals.sgst());
+                rSgst.getCell(0).setCellStyle(headerStyle);
+                rSgst.getCell(columnCount - 1).setCellStyle(dataStyle);
+                
+                // Add Round Off
+                Row rRound = sheet.createRow(rowIdx++);
+                rRound.createCell(0).setCellValue("Round Off :");
+                rRound.createCell(columnCount - 1).setCellValue(totals.roundOff());
+                rRound.getCell(0).setCellStyle(headerStyle);
+                rRound.getCell(columnCount - 1).setCellStyle(dataStyle);
+                
+                // Add Nett Amount Payable
+                Row rNett = sheet.createRow(rowIdx++);
+                rNett.createCell(0).setCellValue("Nett Amount Payable :");
+                rNett.createCell(columnCount - 1).setCellValue(totals.nettAmount());
+                rNett.getCell(0).setCellStyle(headerStyle);
+                rNett.getCell(columnCount - 1).setCellStyle(headerStyle);
             }
 
             for (int i = 0; i < columnCount; i++) {

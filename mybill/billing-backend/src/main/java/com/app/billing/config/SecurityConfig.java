@@ -102,10 +102,12 @@ public class SecurityConfig {
         // Trim whitespace and normalize URLs (remove double slashes, trailing slashes before port)
         origins = origins.stream()
                 .map(String::trim)
+                .map(origin -> origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin)
                 .map(origin -> origin.replaceAll(":/(\\d)", ":$1")) // Fix :/port to :port
                 .map(origin -> origin.replaceAll("//+", "/")) // Remove double slashes
                 .map(origin -> origin.replaceAll("http:/", "http://")) // Fix http:/ to http://
                 .map(origin -> origin.replaceAll("https:/", "https://")) // Fix https:/ to https://
+                .map(origin -> origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin)
                 .toList();
 
         System.out.println("CORS Allowed Origins: " + origins);

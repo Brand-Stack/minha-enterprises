@@ -57,7 +57,7 @@ public class AccountingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "entryDate") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "desc") String sortDir) {
         return ResponseEntity.ok(accountingService.searchPaged(dateFrom, dateTo, type, calendarMonth, calendarYear,
                 page, size, sortBy, sortDir));
     }

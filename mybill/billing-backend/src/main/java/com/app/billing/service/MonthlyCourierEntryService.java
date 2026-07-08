@@ -88,14 +88,91 @@ public class MonthlyCourierEntryService {
     }
 
     public List<MonthlyCourierEntryDto> findByQuotationId(String quotationId) {
-        return repository.findByMonthlyQuotationIdOrderByEntryDateAsc(quotationId)
-                .stream().map(this::toDto).collect(Collectors.toList());
+        return findByQuotationId(quotationId, null, null);
+    }
+
+    public List<MonthlyCourierEntryDto> findByQuotationId(String quotationId, String search, String fields) {
+        List<MonthlyCourierEntry> all = repository.findByMonthlyQuotationIdOrderByEntryDateAsc(quotationId);
+        return filterAndSearchEntries(all, search, fields).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public PageResponse<MonthlyCourierEntryDto> findByQuotationId(String quotationId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<MonthlyCourierEntry> entriesPage = repository.findByMonthlyQuotationIdOrderByEntryDateAsc(quotationId, pageable);
-        return PaginationUtil.toPageResponse(entriesPage.map(this::toDto));
+        return findByQuotationId(quotationId, page, size, null, null);
+    }
+
+    public PageResponse<MonthlyCourierEntryDto> findByQuotationId(String quotationId, int page, int size, String search, String fields) {
+        List<MonthlyCourierEntry> all = repository.findByMonthlyQuotationIdOrderByEntryDateAsc(quotationId);
+        List<MonthlyCourierEntry> filtered = filterAndSearchEntries(all, search, fields);
+        long total = filtered.size();
+        int from = page * size;
+        if (from >= total) {
+            return PaginationUtil.toPageResponse(List.of(), page, size, total);
+        }
+        int to = Math.min(from + size, (int) total);
+        List<MonthlyCourierEntryDto> slice = filtered.subList(from, to).stream().map(this::toDto).collect(Collectors.toList());
+        return PaginationUtil.toPageResponse(slice, page, size, total);
+    }
+
+    private List<MonthlyCourierEntry> filterAndSearchEntries(List<MonthlyCourierEntry> list, String search, String fieldsStr) {
+        if (search == null || search.trim().isEmpty()) {
+            return list;
+        }
+        String s = search.trim().toLowerCase();
+        List<String> fields = new java.util.ArrayList<>();
+        if (fieldsStr != null && !fieldsStr.trim().isEmpty()) {
+            for (String f : fieldsStr.split(",")) {
+                fields.add(f.trim().toLowerCase());
+            }
+        }
+        if (fields.isEmpty()) {
+            fields = List.of("date", "couriertype", "trackingnumber", "destination", "weight", "cost", "itemtype", "zone", "ratetype", "description", "consignor", "status");
+        }
+
+        final List<String> searchFields = fields;
+        return list.stream().filter(e -> {
+            boolean match = false;
+            if (searchFields.contains("date") && e.getEntryDate() != null && e.getEntryDate().toString().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("couriertype") && e.getCourierType() != null && e.getCourierType().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("trackingnumber") && e.getTrackingNumber() != null && e.getTrackingNumber().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("destination")) {
+                if (e.getConsigneeAddress() != null && e.getConsigneeAddress().toLowerCase().contains(s)) match = true;
+                if (e.getReceiverName() != null && e.getReceiverName().toLowerCase().contains(s)) match = true;
+                if (e.getPincode() != null && e.getPincode().toLowerCase().contains(s)) match = true;
+                if (e.getState() != null && e.getState().toLowerCase().contains(s)) match = true;
+                if (e.getAreaName() != null && e.getAreaName().toLowerCase().contains(s)) match = true;
+            }
+            if (searchFields.contains("weight") && e.getWeight() != null && e.getWeight().toString().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("cost") && e.getAmount() != null && e.getAmount().toString().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("itemtype") && e.getItemType() != null && e.getItemType().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("zone") && e.getZone() != null && e.getZone().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("ratetype") && e.getRateType() != null && e.getRateType().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("description") && e.getAdditionalChargesDescription() != null && e.getAdditionalChargesDescription().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("consignor") && e.getConsignor() != null && e.getConsignor().toLowerCase().contains(s)) {
+                match = true;
+            }
+            if (searchFields.contains("status") && e.getDeliveryStatus() != null && e.getDeliveryStatus().toLowerCase().contains(s)) {
+                match = true;
+            }
+            return match;
+        }).collect(Collectors.toList());
     }
 
     public AwbShipmentLookupDto lookupByTrackingNumber(String raw) {

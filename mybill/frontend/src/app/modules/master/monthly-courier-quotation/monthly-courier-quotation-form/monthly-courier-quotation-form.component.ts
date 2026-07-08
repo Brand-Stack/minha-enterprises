@@ -99,8 +99,8 @@ import { isClientEntryRecordLocked } from '../../../../core/util/client-entry-ed
             </mat-form-field>
             <mat-form-field appearance="outline" *ngIf="quotationId">
               <mat-label>Invoice No</mat-label>
-              <input matInput formControlName="invoiceNumber" readonly placeholder="Auto-generated">
-              <mat-hint>Auto-generated on invoice creation (e.g. 001/2026)</mat-hint>
+              <input matInput formControlName="invoiceNumber" placeholder="Leave blank to auto-generate">
+              <mat-hint>Enter custom Invoice No or leave blank to auto-generate</mat-hint>
             </mat-form-field>
             <mat-form-field appearance="outline" *ngIf="quotationId">
               <mat-label>Invoice Date</mat-label>
@@ -302,7 +302,7 @@ import { isClientEntryRecordLocked } from '../../../../core/util/client-entry-ed
           <div class="cq-breakup-search">
             <mat-form-field appearance="outline" class="cq-search-field cq-search-field-narrow">
               <mat-label>Search By</mat-label>
-              <mat-select [(ngModel)]="selectedSearchFields" multiple>
+              <mat-select [(ngModel)]="selectedSearchFields" multiple (selectionChange)="onSearchFieldsChange()">
                 <mat-option *ngFor="let option of searchFields" [value]="option.value">{{option.label}}</mat-option>
               </mat-select>
             </mat-form-field>
@@ -488,15 +488,15 @@ import { isClientEntryRecordLocked } from '../../../../core/util/client-entry-ed
       <div class="cq-action-bar" *ngIf="quotationId" style="align-items: center;">
         <div style="display: flex; align-items: center; gap: 16px; margin-right: 16px; font-size: 14px; font-weight: 500;">
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" id="chkGst" [(ngModel)]="includeGst" style="width: 16px; height: 16px; cursor: pointer;">
+            <input type="checkbox" id="chkGst" [(ngModel)]="includeGst" (change)="onSettingsChange()" style="width: 16px; height: 16px; cursor: pointer;">
             Include GST?
           </label>
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" id="chkFuel" [(ngModel)]="includeFuel" style="width: 16px; height: 16px; cursor: pointer;">
+            <input type="checkbox" id="chkFuel" [(ngModel)]="includeFuel" (change)="onSettingsChange()" style="width: 16px; height: 16px; cursor: pointer;">
             Include Fuel?
           </label>
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" id="chkWeight" [(ngModel)]="includeWeight" style="width: 16px; height: 16px; cursor: pointer;">
+            <input type="checkbox" id="chkWeight" [(ngModel)]="includeWeight" (change)="onSettingsChange()" style="width: 16px; height: 16px; cursor: pointer;">
             Include Weight?
           </label>
         </div>
@@ -889,6 +889,7 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
   areaDisabled: { [key: string]: boolean } = { 'new': false, 'edit': false };
   pincodeAreas: { [key: string]: string[] } = { 'new': [], 'edit': [] };
   private customerSearch$ = new Subject<string>();
+  private breakupSearch$ = new Subject<string>();
   showEmailOptions = false;
   emailOptions: {
     emailType: string;
@@ -1010,6 +1011,19 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
         this.filteredCustomers = [];
       }
     });
+
+    this.breakupSearch$.pipe(debounceTime(300), distinctUntilChanged()).subscribe(() => {
+      this.pageIndex = 0;
+      this.entries = [];
+      this.loadEntries(this.quotationId!);
+    });
+
+    const qpm = this.route.snapshot.queryParamMap;
+    const awb = (qpm.get('awb') || '').trim();
+    if (awb) {
+      this.searchQuery = awb;
+      this.selectedSearchFields = ['trackingNumber'];
+    }
 
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -1191,7 +1205,7 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
       this.loadingMore = true;
     }
 
-    this.service.getEntries(id, this.pageIndex, this.pageSize).subscribe({
+    this.service.getEntries(id, this.pageIndex, this.pageSize, this.searchQuery, this.selectedSearchFields).subscribe({
       next: (res: any) => {
         let fetchedEntries: MonthlyCourierEntry[] = [];
         if (res && res.content) {
@@ -1252,9 +1266,33 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
   }
 
   /** User edited the breakup search — drop single-row focus so the normal filter applies. */
-  onBreakupSearchChange(_: string): void {
+  onBreakupSearchChange(val: string): void {
     if (this.suppressBreakupSearchChange) return;
     this.shipmentFocusEntryId = null;
+    this.breakupSearch$.next(val);
+  }
+
+  onSearchFieldsChange() {
+    this.pageIndex = 0;
+    this.entries = [];
+    this.loadEntries(this.quotationId!);
+  }
+
+  onSettingsChange(): void {
+    if (!this.quotationId || !this.quotation) return;
+    const body = {
+      ...this.quotation,
+      includeGst: this.includeGst,
+      includeFuel: this.includeFuel,
+      includeWeight: this.includeWeight
+    };
+    this.service.update(this.quotationId, body).subscribe({
+      next: (updated) => {
+        this.quotation = updated;
+        this.toastService.success('Success', 'Invoice settings auto-saved');
+      },
+      error: () => this.toastService.error('Error', 'Failed to auto-save invoice settings')
+    });
   }
 
   clearShipmentBreakupFilter(): void {
@@ -1269,6 +1307,9 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
       queryParamsHandling: 'merge',
       replaceUrl: true
     });
+    this.pageIndex = 0;
+    this.entries = [];
+    this.loadEntries(this.quotationId!);
   }
 
   onPincodeChange(mode: 'new' | 'edit') {
@@ -1323,36 +1364,7 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
         return focused;
       }
     }
-    if (!this.searchQuery) return this.entries;
-    const s = this.searchQuery.toLowerCase();
-    const fields = this.selectedSearchFields && this.selectedSearchFields.length > 0 ? this.selectedSearchFields : this.searchFields.map(f => f.value);
-
-    return this.entries.filter(e => {
-       const dateStr = formatLocalDateOnly(e.entryDate as any) ?? '';
-       const amt = this.getEntryTotal(e);
-       const zoneLabel = this.getZoneLabel(e.zone);
-       const rateLabel = this.getRateTypeLabel(e.rateType);
-       
-       let match = false;
-       if (fields.includes('date') && dateStr.includes(s)) match = true;
-       if (fields.includes('courierType') && e.courierType && e.courierType.toLowerCase().includes(s)) match = true;
-       if (fields.includes('trackingNumber') && e.trackingNumber && e.trackingNumber.toLowerCase().includes(s)) match = true;
-       if (fields.includes('destination') && e.consigneeAddress && e.consigneeAddress.toLowerCase().includes(s)) match = true;
-       if (fields.includes('destination') && e.receiverName && e.receiverName.toLowerCase().includes(s)) match = true;
-       if (fields.includes('destination') && e.pincode && String(e.pincode).toLowerCase().includes(s)) match = true;
-       if (fields.includes('destination') && e.state && e.state.toLowerCase().includes(s)) match = true;
-       if (fields.includes('destination') && e.areaName && e.areaName.toLowerCase().includes(s)) match = true;
-       if (fields.includes('weight') && e.weight && e.weight.toString().includes(s)) match = true;
-       if (fields.includes('cost') && amt.toString().includes(s)) match = true;
-       if (fields.includes('itemType') && e.itemType && e.itemType.toLowerCase().includes(s)) match = true;
-       if (fields.includes('zone') && zoneLabel && zoneLabel.toLowerCase().includes(s)) match = true;
-       if (fields.includes('rateType') && rateLabel && rateLabel.toLowerCase().includes(s)) match = true;
-       if (fields.includes('description') && e.additionalChargesDescription && e.additionalChargesDescription.toLowerCase().includes(s)) match = true;
-       if (fields.includes('consignor') && e.consignor && e.consignor.toLowerCase().includes(s)) match = true;
-       if (fields.includes('status') && e.deliveryStatus && e.deliveryStatus.toLowerCase().includes(s)) match = true;
-       
-       return match;
-    });
+    return this.entries;
   }
 
   copyAwb(awb: string) {
@@ -1436,6 +1448,7 @@ export class MonthlyCourierQuotationFormComponent implements OnInit {
       month: v.month,
       year: v.year,
       title: v.title,
+      invoiceNumber: v.invoiceNumber ?? undefined,
       invoiceDate: formatLocalDateOnly(v.invoiceDate),
       note: v.note ?? undefined,
       fuelChargePercentage: v.fuelChargePercentage != null && v.fuelChargePercentage !== '' ? Number(v.fuelChargePercentage) : null,

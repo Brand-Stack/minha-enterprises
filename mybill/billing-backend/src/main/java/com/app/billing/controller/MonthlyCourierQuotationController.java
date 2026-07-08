@@ -44,6 +44,7 @@ public class MonthlyCourierQuotationController {
     private final CourierEmailService courierEmailService;
     private final com.app.billing.service.MonthlyShipmentBreakupExcelService monthlyShipmentBreakupExcelService;
     private final com.app.billing.dao.ZoneConfigurationRepository zoneConfigurationRepository;
+    private final com.app.billing.service.MonthlyCourierInvoiceGrandTotalService invoiceGrandTotalService;
 
     @PostMapping
     @RequiresPermission(module = Modules.CLIENT_ENTRY, action = Modules.CREATE)
@@ -142,7 +143,31 @@ public class MonthlyCourierQuotationController {
             List<MonthlyCourierEntryDto> entries = filterEntriesByOptionalIds(all, entryIds);
             Map<String, String> zoneIdToName = buildZoneIdToNameMap();
             MonthlyCourierQuotationDto dto = quotationService.findById(id);
-            byte[] xlsx = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName);
+
+            com.app.billing.service.MonthlyCourierInvoiceGrandTotalService.InvoiceCalculationContext calcCtx =
+                    com.app.billing.service.MonthlyCourierInvoiceGrandTotalService.InvoiceCalculationContext.fromQuotation(
+                            dto.getCustomerId(),
+                            dto.getFuelChargePercentage(),
+                            dto.getFovCharges(),
+                            dto.getGstPercentage(),
+                            dto.getIncludeFuel() != null ? dto.getIncludeFuel() : true,
+                            dto.getIncludeGst() != null ? dto.getIncludeGst() : true,
+                            dto.getIncludeFov() != null ? dto.getIncludeFov() : true);
+            List<com.app.billing.model.MonthlyCourierEntry> monthlyEntries = entries.stream()
+                    .map(d -> {
+                        com.app.billing.model.MonthlyCourierEntry e = new com.app.billing.model.MonthlyCourierEntry();
+                        e.setAmount(d.getAmount());
+                        e.setAdditionalCharges(d.getAdditionalCharges());
+                        e.setFuelApplicable(d.getFuelApplicable());
+                        e.setGstApplicable(d.getGstApplicable());
+                        e.setFovApplicable(d.getFovApplicable());
+                        return e;
+                    })
+                    .toList();
+            com.app.billing.service.MonthlyCourierInvoiceGrandTotalService.PdfInvoiceTotals totals =
+                    invoiceGrandTotalService.computePdfTotals(calcCtx, monthlyEntries);
+
+            byte[] xlsx = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName, totals);
             HttpHeaders h = new HttpHeaders();
             h.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
             h.setContentDisposition(AttachmentFilenameUtil.attachmentUtf8(AttachmentFilenameUtil.monthlyInvoiceXlsx(dto)));
@@ -191,11 +216,13 @@ public class MonthlyCourierQuotationController {
     public ResponseEntity<?> getEntries(
             @PathVariable String id,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size) {
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String fields) {
         if (page != null && size != null) {
-            return ResponseEntity.ok(entryService.findByQuotationId(id, page, size));
+            return ResponseEntity.ok(entryService.findByQuotationId(id, page, size, search, fields));
         }
-        return ResponseEntity.ok(entryService.findByQuotationId(id));
+        return ResponseEntity.ok(entryService.findByQuotationId(id, search, fields));
     }
 
     @PostMapping("/{id}/entries")

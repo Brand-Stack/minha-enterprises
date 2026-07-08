@@ -32,7 +32,7 @@ export class AccountingPageComponent implements OnInit {
   fltMonth = '';
   fltYear: number | null = null;
   sortBy = 'entryDate';
-  sortDir = 'asc';
+  sortDir = 'desc';
 
   reportPage = 0;
   reportSize = 25;

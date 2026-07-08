@@ -77,10 +77,12 @@ export class MonthlyCourierQuotationService {
 
 
 
-    getEntries(quotationId: string, page?: number, size?: number): Observable<any> {
+    getEntries(quotationId: string, page?: number, size?: number, search?: string, fields?: string[]): Observable<any> {
         const params: any = {};
         if (page != null) params.page = page.toString();
         if (size != null) params.size = size.toString();
+        if (search?.trim()) params.search = search.trim();
+        if (fields && fields.length > 0) params.fields = fields.join(',');
         return this.apiService.get<any>(`${this.basePath}/${quotationId}/entries`, params);
     }
 

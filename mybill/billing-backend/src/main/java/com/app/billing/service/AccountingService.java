@@ -170,17 +170,20 @@ public class AccountingService {
                 .filter(e -> dateTo == null || (e.getEntryDate() != null && !e.getEntryDate().isAfter(dateTo)))
                 .filter(e -> !StringUtils.hasText(entryType) || entryType.equalsIgnoreCase(e.getEntryType()))
                 .filter(e -> {
-                    if (calendarYear == null) {
-                        return true;
-                    }
                     if (e.getEntryDate() == null) {
                         return false;
                     }
-                    if (calendarMonth != null && calendarMonth >= 1 && calendarMonth <= 12) {
+                    if (calendarYear != null && calendarMonth != null && calendarMonth >= 1 && calendarMonth <= 12) {
                         YearMonth ym = YearMonth.of(calendarYear, calendarMonth);
                         return YearMonth.from(e.getEntryDate()).equals(ym);
                     }
-                    return e.getEntryDate().getYear() == calendarYear;
+                    if (calendarYear != null) {
+                        return e.getEntryDate().getYear() == calendarYear;
+                    }
+                    if (calendarMonth != null && calendarMonth >= 1 && calendarMonth <= 12) {
+                        return e.getEntryDate().getMonthValue() == calendarMonth;
+                    }
+                    return true;
                 })
                 .collect(Collectors.toList());
     }

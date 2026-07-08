@@ -43,7 +43,13 @@ public class ClientEntryEditLockService {
             return false;
         }
         YearMonth currentPeriod = YearMonth.from(today);
-        return recordPeriod.isBefore(currentPeriod.minusMonths(1));
+        if (today.getDayOfMonth() <= 5) {
+            // Case A: Allow current month and previous month
+            return recordPeriod.isBefore(currentPeriod.minusMonths(1));
+        } else {
+            // Case B: Allow only current month
+            return recordPeriod.isBefore(currentPeriod);
+        }
     }
 
     public boolean canCurrentUserEdit(String month, Integer year) {

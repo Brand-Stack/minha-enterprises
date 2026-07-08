@@ -50,6 +50,7 @@ public class CourierEmailService {
     private final SmallClientRepository smallClientRepository;
     private final ZoneConfigurationRepository zoneConfigurationRepository;
     private final EmailDispatchService emailDispatchService;
+    private final MonthlyCourierInvoiceGrandTotalService invoiceGrandTotalService;
     private final CompanySettingsService companySettingsService;
 
     private static final DateTimeFormatter SUBJECT_DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
@@ -147,6 +148,29 @@ public class CourierEmailService {
 
         List<EmailDispatchService.EmailAttachment> attachments = new ArrayList<>();
 
+        MonthlyCourierInvoiceGrandTotalService.InvoiceCalculationContext calcCtx =
+                MonthlyCourierInvoiceGrandTotalService.InvoiceCalculationContext.fromQuotation(
+                        dto.getCustomerId(),
+                        dto.getFuelChargePercentage(),
+                        dto.getFovCharges(),
+                        dto.getGstPercentage(),
+                        includeFuel,
+                        includeGst,
+                        dto.getIncludeFov() != null ? dto.getIncludeFov() : true);
+        List<com.app.billing.model.MonthlyCourierEntry> monthlyEntries = entries.stream()
+                .map(d -> {
+                    com.app.billing.model.MonthlyCourierEntry e = new com.app.billing.model.MonthlyCourierEntry();
+                    e.setAmount(d.getAmount());
+                    e.setAdditionalCharges(d.getAdditionalCharges());
+                    e.setFuelApplicable(d.getFuelApplicable());
+                    e.setGstApplicable(d.getGstApplicable());
+                    e.setFovApplicable(d.getFovApplicable());
+                    return e;
+                })
+                .toList();
+        MonthlyCourierInvoiceGrandTotalService.PdfInvoiceTotals totals =
+                invoiceGrandTotalService.computePdfTotals(calcCtx, monthlyEntries);
+
         if ("DAILY".equals(emailType)) {
             String dateSuffix = fromDate.equals(toDate != null ? toDate : fromDate)
                     ? fromDate.format(SUBJECT_DATE_FMT)
@@ -157,7 +181,7 @@ public class CourierEmailService {
                 String pdfName = "shipment-breakup-" + dateSuffix + ".pdf";
                 attachments.add(new EmailDispatchService.EmailAttachment(pdfName, "application/pdf", breakupPdf));
             } else {
-                byte[] breakupExcel = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName);
+                byte[] breakupExcel = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName, totals);
                 String xlsxName = "shipment-breakup-" + dateSuffix + ".xlsx";
                 attachments.add(new EmailDispatchService.EmailAttachment(xlsxName, XLSX_MIME, breakupExcel));
             }
@@ -166,7 +190,7 @@ public class CourierEmailService {
                 byte[] fullPdf = monthlyCourierQuotationPdfService.generate(dto, includeAmount, includeGst, includeFuel, includeWeight, true);
                 attachments.add(new EmailDispatchService.EmailAttachment("monthly-courier-invoice-" + safe(dto.getTitle()) + ".pdf", "application/pdf", fullPdf));
             } else {
-                byte[] breakupExcel = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName);
+                byte[] breakupExcel = monthlyShipmentBreakupExcelService.generate(entries, includeAmount, includeWeight, zoneIdToName, totals);
                 attachments.add(new EmailDispatchService.EmailAttachment("monthly-shipment-breakup.xlsx", XLSX_MIME, breakupExcel));
             }
         }
