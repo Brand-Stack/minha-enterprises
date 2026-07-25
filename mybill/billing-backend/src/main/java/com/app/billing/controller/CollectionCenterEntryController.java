@@ -108,6 +108,16 @@ public class CollectionCenterEntryController {
                 createdFrom, createdTo, calendarMonth, calendarYear));
     }
 
+    @PatchMapping("/entries/{id}/status")
+    @RequiresPermission(module = Modules.COLLECTION_CENTER, action = Modules.EDIT)
+    @Operation(summary = "Patch status/remarks for collection center entry")
+    public ResponseEntity<CollectionCenterEntryDto> patchStatus(
+            @PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        CollectionCenterEntryDto updated = service.patchStatus(id, payload.get("amountStatus"), payload.get("description"));
+        return ResponseEntity.ok(updated);
+    }
+
     @DeleteMapping("/entries/{id}")
     @RequiresPermission(module = Modules.COLLECTION_CENTER, action = Modules.DELETE)
     @Operation(summary = "Delete entry")

@@ -92,4 +92,14 @@ public class CashBookingController {
         return ResponseEntity.ok(service.reportTotals(dateFrom, dateTo, awbNo, receiverName, pincode, state, areaName,
                 courier, status, amountStatus, remarks));
     }
+
+    @PatchMapping("/{id}/status")
+    @RequiresPermission(module = Modules.CASH_BOOKING, action = Modules.EDIT)
+    @Operation(summary = "Patch status/remarks for cash booking")
+    public ResponseEntity<CashBookingDto> patchStatus(
+            @PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        CashBookingDto updated = service.patchStatus(id, payload.get("amountStatus"), payload.get("description"));
+        return ResponseEntity.ok(updated);
+    }
 }

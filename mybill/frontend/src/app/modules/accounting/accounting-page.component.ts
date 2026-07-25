@@ -38,6 +38,7 @@ export class AccountingPageComponent implements OnInit {
   reportSize = 25;
   reportTotal = 0;
   reportTotalPages = 0;
+  reportTotalAmount = 0;
 
   inRows: any[] = [];
   outRows: any[] = [];
@@ -133,6 +134,16 @@ export class AccountingPageComponent implements OnInit {
         this.reportTotalPages = res?.totalPages ?? 0;
       },
       error: () => this.toast.error('Error', 'Failed to load report')
+    });
+
+    const totalsParams = this.filterParams();
+    this.api.get<{ totalAmount: number }>('/accounting/report-totals', totalsParams).subscribe({
+      next: (res) => {
+        this.reportTotalAmount = res?.totalAmount ?? 0;
+      },
+      error: () => {
+        this.reportTotalAmount = 0;
+      }
     });
   }
 

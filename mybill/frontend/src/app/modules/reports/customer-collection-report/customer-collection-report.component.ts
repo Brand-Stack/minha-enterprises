@@ -114,37 +114,60 @@ import { Router } from '@angular/router';
                   class="cr-row-click"
                   [class.cr-row-even]="i % 2 === 0"
                   [class.cr-row-odd]="i % 2 !== 0"
+                  [class.cr-row-editing]="editingItemId === r.id"
                   (click)="openEntry(r)">
                 <td class="cr-td-date">{{ r.entryDate | date:'yyyy-MM-dd' }}</td>
-                <td class="cr-td-invoice">—</td>
+                <td class="cr-td-invoice">{{ r.awbNo || '—' }}</td>
                 <td class="cr-td-customer">{{ r.customerName }}</td>
                 <td class="cr-td-amount">₹ {{ r.amount != null ? (r.amount | number:'1.2-2') : '—' }}</td>
                 <td class="cr-td-status">
-                  <span class="cr-status-badge"
-                        [class.cr-status-paid]="r.amountStatus === 'Paid'"
-                        [class.cr-status-pending]="r.amountStatus === 'Pending' || r.amountStatus === 'UnPaid'"
-                        [class.cr-status-partial]="r.amountStatus === 'Partial' || r.amountStatus === 'CashOnDelivery'">
-                    {{ r.amountStatus || '—' }}
-                  </span>
+                  <ng-container *ngIf="editingItemId !== r.id">
+                    <span class="cr-status-badge"
+                          [class.cr-status-paid]="r.amountStatus === 'Paid'"
+                          [class.cr-status-pending]="r.amountStatus === 'Pending' || r.amountStatus === 'UnPaid'"
+                          [class.cr-status-partial]="r.amountStatus === 'Partial' || r.amountStatus === 'CashOnDelivery'">
+                      {{ r.amountStatus || '—' }}
+                    </span>
+                  </ng-container>
+                  <mat-form-field *ngIf="editingItemId === r.id" appearance="outline" class="cr-edit-field" subscriptSizing="dynamic">
+                    <input matInput [(ngModel)]="editDraft.amountStatus" [matAutocomplete]="rowStatusAuto"
+                           [ngModelOptions]="{standalone: true}" placeholder="Pick or type">
+                  </mat-form-field>
                 </td>
                 <td class="cr-td-desc">
-                  <span class="cr-desc-readonly" [title]="r.remarks || r.status || ''">
-                    {{ r.remarks || r.status || '—' }}
-                  </span>
+                  <ng-container *ngIf="editingItemId !== r.id">
+                    <span class="cr-desc-readonly" [title]="r.remarks || r.status || ''">
+                      {{ r.remarks || r.status || '—' }}
+                    </span>
+                  </ng-container>
+                  <input *ngIf="editingItemId === r.id" class="cr-inline-input" [(ngModel)]="editDraft.description"
+                         [ngModelOptions]="{standalone: true}" placeholder="Remarks">
                 </td>
                 <td class="cr-actions-cell" (click)="$event.stopPropagation()">
-                  <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="View details" class="cr-action-btn cr-action-view">
-                    <mat-icon>visibility</mat-icon>
-                  </button>
-                  <button mat-icon-button type="button" [disabled]="true" matTooltip="View breakup" class="cr-action-btn cr-action-breakup" style="opacity: 0.35;">
-                    <mat-icon>table_chart</mat-icon>
-                  </button>
-                  <button mat-icon-button type="button" [disabled]="true" matTooltip="More" class="cr-action-btn" style="opacity: 0.35;">
-                    <mat-icon>more_vert</mat-icon>
-                  </button>
-                  <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="Edit details" class="cr-action-btn cr-action-edit">
-                    <mat-icon>edit</mat-icon>
-                  </button>
+                  <div class="cr-actions-flex">
+                    <ng-container *ngIf="editingItemId !== r.id">
+                      <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="View details" class="cr-action-btn cr-action-view">
+                        <mat-icon>visibility</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" [disabled]="true" matTooltip="View breakup" class="cr-action-btn cr-action-breakup" style="opacity: 0.35;">
+                        <mat-icon>table_chart</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" [disabled]="true" matTooltip="More" class="cr-action-btn" style="opacity: 0.35;">
+                        <mat-icon>more_vert</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" (click)="startEdit(r)" matTooltip="Edit details" class="cr-action-btn cr-action-edit">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                    </ng-container>
+                    <ng-container *ngIf="editingItemId === r.id">
+                      <button mat-icon-button type="button" color="primary" (click)="saveEdit(r)" matTooltip="Save" class="cr-action-btn cr-action-save">
+                        <mat-icon>check</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" (click)="cancelEdit()" matTooltip="Cancel" class="cr-action-btn cr-action-cancel">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </ng-container>
+                  </div>
                 </td>
               </tr>
               <tr *ngIf="rows.length === 0 && !loading" class="cr-empty-row">
@@ -159,6 +182,9 @@ import { Router } from '@angular/router';
         <mat-paginator [length]="total" [pageIndex]="page" [pageSize]="size" [pageSizeOptions]="[20, 50, 100]" (page)="onPage($event)"></mat-paginator>
       </div>
 
+      <mat-autocomplete #rowStatusAuto="matAutocomplete">
+        <mat-option *ngFor="let s of amountStatusSuggestions" [value]="s">{{ s }}</mat-option>
+      </mat-autocomplete>
     </div>
   `,
   styles: [`
@@ -302,13 +328,29 @@ import { Router } from '@angular/router';
       vertical-align: middle; color: #475569;
     }
 
-    /* ── Actions Cell ── */
+     /* ── Actions Cell ── */
+    .cr-row-editing { background: #fefce8 !important; }
     .cr-actions-cell { text-align: center; white-space: nowrap; }
+    .cr-actions-flex { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
     .cr-action-btn { transition: color 0.15s ease, background-color 0.15s ease; }
     .cr-action-btn:hover { background: #f1f5f9; }
     .cr-action-view mat-icon { color: #3b82f6; }
     .cr-action-breakup mat-icon { color: #cbd5e1; }
     .cr-action-edit mat-icon { color: #f59e0b; }
+    .cr-action-save mat-icon { color: #16a34a; }
+    .cr-action-cancel mat-icon { color: #ef4444; }
+    .cr-edit-field { width: 100%; min-width: 160px; max-width: 260px; margin-bottom: 0 !important; }
+    .cr-edit-field .mat-mdc-form-field-subscript-wrapper { display: none; }
+    .cr-inline-input {
+      width: 100%; max-width: 320px;
+      padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
+      box-sizing: border-box; font-size: 13px; color: #0f172a;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .cr-inline-input:focus {
+      border-color: #3b82f6; outline: none;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+    }
 
     /* ── Empty State ── */
     .cr-empty-row:hover { background: transparent !important; }
@@ -455,6 +497,7 @@ export class CustomerCollectionReportComponent implements OnInit {
   }
 
   load(pageIdx: number) {
+    this.cancelEdit();
     this.page = pageIdx;
     this.loading = true;
     this.api.get<PageResponse<any>>('/collection-center/entries', this.params()).subscribe({
@@ -503,8 +546,51 @@ export class CustomerCollectionReportComponent implements OnInit {
     this.filteredCustomerSuggestions = [...this.customerSuggestions];
   }
 
+  editingItemId: string | null = null;
+  editDraft = { amountStatus: '', description: '' };
+
+  startEdit(item: any): void {
+    if (this.editingItemId != null && this.editingItemId !== item.id) {
+      this.toast.warning('Edit in progress', 'Save or cancel the current row before editing another.');
+      return;
+    }
+    this.editingItemId = item.id;
+    this.editDraft = {
+      amountStatus: (item.amountStatus ?? 'Pending').toString(),
+      description: item.remarks ?? ''
+    };
+  }
+
+  cancelEdit(): void {
+    this.editingItemId = null;
+    this.editDraft = { amountStatus: '', description: '' };
+  }
+
+  saveEdit(item: any): void {
+    if (this.editingItemId !== item.id) return;
+    const statusRaw = (this.editDraft.amountStatus ?? '').toString().trim();
+    const payload: Record<string, string> = {
+      amountStatus: statusRaw || 'Pending',
+      description: this.editDraft.description ?? ''
+    };
+    this.api.patch<any>(`/collection-center/entries/${item.id}/status`, payload).subscribe({
+      next: (updated: any) => {
+        if (updated && item.id === updated.id) {
+          item.amountStatus = updated.amountStatus ?? payload['amountStatus'];
+          item.remarks = updated.remarks ?? '';
+        }
+        this.cancelEdit();
+        this.toast.success('Success', 'Saved successfully');
+      },
+      error: (err) => {
+        console.error('Customer Collection Report patch failed', err);
+        this.toast.error('Error', err?.error?.message || 'Failed to save');
+      }
+    });
+  }
+
   openEntry(r: { id?: string }): void {
-    if (!r?.id) return;
+    if (!r?.id || this.editingItemId) return;
     this.router.navigate(['/client-entries/collection-center/edit', r.id]);
   }
 

@@ -79,6 +79,7 @@ interface CategoryTotal {
         </article>
       </section>
 
+
       <!-- Filter bar -->
       <mat-card class="exp-filter">
         <div class="exp-filter__grid">
@@ -90,6 +91,19 @@ interface CategoryTotal {
                 {{ cat.category }} (₹{{ cat.amount | number:'1.0-0' }})
               </mat-option>
             </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="exp-f">
+            <mat-label>Month</mat-label>
+            <mat-select [(ngModel)]="selectedMonth" (selectionChange)="onMonthYearChange()">
+              <mat-option [value]="null">All Months</mat-option>
+              <mat-option *ngFor="let m of monthOptions" [value]="m.value">{{ m.label }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="exp-f">
+            <mat-label>Year</mat-label>
+            <input matInput type="number" placeholder="e.g. 2026" [(ngModel)]="selectedYear" (input)="onMonthYearChange()" />
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="exp-f">
@@ -505,6 +519,26 @@ export class ExpensesListComponent implements OnInit, AfterViewInit {
   allExpenses: Expense[] = [];
   dateFrom: Date | null = null;
   dateTo: Date | null = null;
+  selectedMonth: number | null = null;
+  selectedYear: number | null = null;
+  monthOptions = [
+    { value: 1, label: 'January' },
+    { value: 2, label: 'February' },
+    { value: 3, label: 'March' },
+    { value: 4, label: 'April' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'June' },
+    { value: 7, label: 'July' },
+    { value: 8, label: 'August' },
+    { value: 9, label: 'September' },
+    { value: 10, label: 'October' },
+    { value: 11, label: 'November' },
+    { value: 12, label: 'December' }
+  ];
+
+  onMonthYearChange() {
+    this.loadExpenses(this.selectedCategory || undefined);
+  }
 
   totalCashInAmount = 0;
   countCashIn = 0;
@@ -558,23 +592,31 @@ export class ExpensesListComponent implements OnInit, AfterViewInit {
 
   loadExpenses(category?: string) {
     const params: any = { page: 0, size: 1000 };
+    if (this.selectedMonth != null) {
+      params.calendarMonth = this.selectedMonth;
+    }
+    if (this.selectedYear != null) {
+      params.calendarYear = this.selectedYear;
+    }
 
     const startDate = this.iso(this.dateFrom);
     const endDate = this.iso(this.dateTo);
     const hasDateRange = !!startDate && !!endDate;
 
     if (category && hasDateRange) {
-      this.apiService.get<PageResponse<Expense>>(`/cash-in/category/${category}/filter`, { startDate, endDate, page: 0, size: 1000 }).subscribe({
+      const p = { startDate, endDate, page: 0, size: 1000, ...params };
+      this.apiService.get<PageResponse<Expense>>(`/cash-in/category/${category}/filter`, p).subscribe({
         next: (response) => { this.allExpenses = response.content || []; this.applyFilters(); },
         error: () => this.toastService.error('Error', 'Failed to load ledger entries')
       });
     } else if (category) {
-      this.apiService.get<Expense[]>(`/cash-in/category/${category}`).subscribe({
+      this.apiService.get<Expense[]>(`/cash-in/category/${category}`, params).subscribe({
         next: (expenses) => { this.allExpenses = Array.isArray(expenses) ? expenses : []; this.applyFilters(); },
         error: () => this.toastService.error('Error', 'Failed to load ledger entries')
       });
     } else if (hasDateRange) {
-      this.apiService.get<PageResponse<Expense>>('/cash-in/filter', { startDate, endDate, page: 0, size: 1000 }).subscribe({
+      const p = { startDate, endDate, page: 0, size: 1000, ...params };
+      this.apiService.get<PageResponse<Expense>>('/cash-in/filter', p).subscribe({
         next: (response) => { this.allExpenses = response.content || []; this.applyFilters(); },
         error: () => this.toastService.error('Error', 'Failed to load ledger entries')
       });
@@ -605,11 +647,29 @@ export class ExpensesListComponent implements OnInit, AfterViewInit {
     this.amountMin = null;
     this.amountMax = null;
     this.selectedCategory = null;
+    this.selectedMonth = null;
+    this.selectedYear = null;
     this.loadExpenses();
   }
 
   applyFilters() {
     let filtered = [...this.allExpenses];
+
+    if (this.selectedMonth != null) {
+      filtered = filtered.filter(expense => {
+        if (!expense.expenseDate) return false;
+        const d = new Date(expense.expenseDate);
+        return (d.getMonth() + 1) === this.selectedMonth;
+      });
+    }
+
+    if (this.selectedYear != null) {
+      filtered = filtered.filter(expense => {
+        if (!expense.expenseDate) return false;
+        const d = new Date(expense.expenseDate);
+        return d.getFullYear() === this.selectedYear;
+      });
+    }
 
     if (this.searchTerm && this.searchTerm.trim() !== '') {
       const searchLower = this.searchTerm.toLowerCase().trim();
@@ -641,6 +701,14 @@ export class ExpensesListComponent implements OnInit, AfterViewInit {
         running += (e.amount || 0);
       }
       e.runningBalance = running;
+    });
+
+    // Ensure all grids display records in descending order (latest entries first)
+    filtered.sort((a, b) => {
+      const timeA = a.expenseDate ? new Date(a.expenseDate).getTime() : 0;
+      const timeB = b.expenseDate ? new Date(b.expenseDate).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return (b.expenseNumber || '').localeCompare(a.expenseNumber || '');
     });
 
     this.dataSource.data = filtered;

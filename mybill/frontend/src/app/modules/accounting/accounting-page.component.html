@@ -153,7 +153,7 @@
 
   <mat-card class="acc-ledger-card">
     <h2>Ledger</h2>
-    <p class="acc-total-line" *ngIf="reportTotal > 0">{{ reportTotal }} record(s) — page {{ reportPage + 1 }} of {{ reportTotalPages || 1 }}</p>
+    <p class="acc-total-line" *ngIf="reportTotal > 0">Records: {{ reportTotal }} | Page {{ reportPage + 1 }} of {{ reportTotalPages || 1 }} | Total Amount: ₹{{ reportTotalAmount | number:'1.2-2' }}</p>
     <div class="acc-table-wrap acc-table-wrap--ledger" *ngIf="displayRows.length">
       <table class="acc-table acc-table--ledger">
         <thead>

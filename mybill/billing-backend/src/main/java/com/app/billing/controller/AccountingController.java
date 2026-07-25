@@ -75,6 +75,20 @@ public class AccountingController {
         return ResponseEntity.ok(accountingService.update(id, dto));
     }
 
+    @GetMapping("/report-totals")
+    @Operation(summary = "Get totals for filtered accounting entries")
+    public ResponseEntity<java.util.Map<String, Object>> reportTotals(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer calendarMonth,
+            @RequestParam(required = false) Integer calendarYear) {
+        java.math.BigDecimal total = accountingService.getTotalAmountForFilters(dateFrom, dateTo, type, calendarMonth, calendarYear);
+        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        res.put("totalAmount", total);
+        return ResponseEntity.ok(res);
+    }
+
     @DeleteMapping("/entries/{id}")
     @RequiresPermission(module = Modules.ACCOUNTING, action = Modules.DELETE)
     @Operation(summary = "Delete entry and recompute running balances")

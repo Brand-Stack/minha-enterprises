@@ -231,6 +231,21 @@ public class CollectionCenterEntryService {
     }
 
     @Transactional
+    public CollectionCenterEntryDto patchStatus(String id, String amountStatus, String remarks) {
+        CollectionCenterEntry e = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Collection center entry not found: " + id));
+        if (amountStatus != null) {
+            e.setAmountStatus(amountStatus);
+        }
+        if (remarks != null) {
+            e.setRemarks(remarks);
+        }
+        auditUtil.setUpdatedBy(e);
+        e = repository.save(e);
+        return toDto(e);
+    }
+
+    @Transactional
     public void delete(String id) {
         CollectionCenterEntry e = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection center entry not found: " + id));

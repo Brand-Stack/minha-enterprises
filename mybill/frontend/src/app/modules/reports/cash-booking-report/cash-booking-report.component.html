@@ -99,37 +99,60 @@
               class="cr-row-click"
               [class.cr-row-even]="i % 2 === 0"
               [class.cr-row-odd]="i % 2 !== 0"
+              [class.cr-row-editing]="editingItemId === r.id"
               (click)="openEntry(r)">
             <td class="cr-td-date">{{ r.bookingDate }}</td>
-            <td class="cr-td-invoice">—</td>
+            <td class="cr-td-invoice">{{ r.awbNo || '—' }}</td>
             <td class="cr-td-customer">{{ r.receiverName }}</td>
             <td class="cr-td-amount">₹ {{ r.amount != null ? (r.amount | number:'1.2-2') : '—' }}</td>
             <td class="cr-td-status">
-              <span class="cr-status-badge"
-                    [class.cr-status-paid]="r.amountStatus === 'Paid'"
-                    [class.cr-status-pending]="r.amountStatus === 'Pending' || r.amountStatus === 'UnPaid'"
-                    [class.cr-status-partial]="r.amountStatus === 'Partial' || r.amountStatus === 'CashOnDelivery' || r.amountStatus === 'COD'">
-                {{ r.amountStatus || '—' }}
-              </span>
+              <ng-container *ngIf="editingItemId !== r.id">
+                <span class="cr-status-badge"
+                      [class.cr-status-paid]="r.amountStatus === 'Paid'"
+                      [class.cr-status-pending]="r.amountStatus === 'Pending' || r.amountStatus === 'UnPaid'"
+                      [class.cr-status-partial]="r.amountStatus === 'Partial' || r.amountStatus === 'CashOnDelivery' || r.amountStatus === 'COD'">
+                  {{ r.amountStatus || '—' }}
+                </span>
+              </ng-container>
+              <mat-form-field *ngIf="editingItemId === r.id" appearance="outline" class="cr-edit-field" subscriptSizing="dynamic">
+                <input matInput [(ngModel)]="editDraft.amountStatus" [matAutocomplete]="rowStatusAuto"
+                       [ngModelOptions]="{standalone: true}" placeholder="Pick or type">
+              </mat-form-field>
             </td>
             <td class="cr-td-desc">
-              <span class="cr-desc-readonly" [title]="r.remarks || ''">
-                {{ r.remarks || '—' }}
-              </span>
+              <ng-container *ngIf="editingItemId !== r.id">
+                <span class="cr-desc-readonly" [title]="r.remarks || ''">
+                  {{ r.remarks || '—' }}
+                </span>
+              </ng-container>
+              <input *ngIf="editingItemId === r.id" class="cr-inline-input" [(ngModel)]="editDraft.description"
+                     [ngModelOptions]="{standalone: true}" placeholder="Remarks">
             </td>
             <td class="cr-actions-cell" (click)="$event.stopPropagation()">
-              <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="View details" class="cr-action-btn cr-action-view">
-                <mat-icon>visibility</mat-icon>
-              </button>
-              <button mat-icon-button type="button" [disabled]="true" matTooltip="View breakup" class="cr-action-btn cr-action-breakup" style="opacity: 0.35;">
-                <mat-icon>table_chart</mat-icon>
-              </button>
-              <button mat-icon-button type="button" [disabled]="true" matTooltip="More" class="cr-action-btn" style="opacity: 0.35;">
-                <mat-icon>more_vert</mat-icon>
-              </button>
-              <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="Edit details" class="cr-action-btn cr-action-edit">
-                <mat-icon>edit</mat-icon>
-              </button>
+              <div class="cr-actions-flex">
+                <ng-container *ngIf="editingItemId !== r.id">
+                  <button mat-icon-button type="button" (click)="openEntry(r)" matTooltip="View details" class="cr-action-btn cr-action-view">
+                    <mat-icon>visibility</mat-icon>
+                  </button>
+                  <button mat-icon-button type="button" [disabled]="true" matTooltip="View breakup" class="cr-action-btn cr-action-breakup" style="opacity: 0.35;">
+                    <mat-icon>table_chart</mat-icon>
+                  </button>
+                  <button mat-icon-button type="button" [disabled]="true" matTooltip="More" class="cr-action-btn" style="opacity: 0.35;">
+                    <mat-icon>more_vert</mat-icon>
+                  </button>
+                  <button mat-icon-button type="button" (click)="startEdit(r)" matTooltip="Edit details" class="cr-action-btn cr-action-edit">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                </ng-container>
+                <ng-container *ngIf="editingItemId === r.id">
+                  <button mat-icon-button type="button" color="primary" (click)="saveEdit(r)" matTooltip="Save" class="cr-action-btn cr-action-save">
+                    <mat-icon>check</mat-icon>
+                  </button>
+                  <button mat-icon-button type="button" (click)="cancelEdit()" matTooltip="Cancel" class="cr-action-btn cr-action-cancel">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </ng-container>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -144,5 +167,9 @@
 
     <mat-paginator *ngIf="rows.length" [length]="total" [pageIndex]="page" [pageSize]="size" [pageSizeOptions]="[10, 20, 50]" (page)="onPage($event)"></mat-paginator>
   </div>
+
+  <mat-autocomplete #rowStatusAuto="matAutocomplete">
+    <mat-option *ngFor="let s of amountStatusSuggestions" [value]="s">{{ s }}</mat-option>
+  </mat-autocomplete>
 
 </div>

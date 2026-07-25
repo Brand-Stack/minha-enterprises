@@ -44,8 +44,51 @@ export class CashBookingReportComponent implements OnInit {
     private fb: FormBuilder
   ) {}
 
+  editingItemId: string | null = null;
+  editDraft = { amountStatus: '', description: '' };
+
+  startEdit(item: any): void {
+    if (this.editingItemId != null && this.editingItemId !== item.id) {
+      this.toast.warning('Edit in progress', 'Save or cancel the current row before editing another.');
+      return;
+    }
+    this.editingItemId = item.id;
+    this.editDraft = {
+      amountStatus: (item.amountStatus ?? 'Pending').toString(),
+      description: item.remarks ?? ''
+    };
+  }
+
+  cancelEdit(): void {
+    this.editingItemId = null;
+    this.editDraft = { amountStatus: '', description: '' };
+  }
+
+  saveEdit(item: any): void {
+    if (this.editingItemId !== item.id) return;
+    const statusRaw = (this.editDraft.amountStatus ?? '').toString().trim();
+    const payload: Record<string, string> = {
+      amountStatus: statusRaw || 'Pending',
+      description: this.editDraft.description ?? ''
+    };
+    this.api.patch<any>(`/cash-bookings/${item.id}/status`, payload).subscribe({
+      next: (updated: any) => {
+        if (updated && item.id === updated.id) {
+          item.amountStatus = updated.amountStatus ?? payload['amountStatus'];
+          item.remarks = updated.remarks ?? '';
+        }
+        this.cancelEdit();
+        this.toast.success('Success', 'Saved successfully');
+      },
+      error: (err) => {
+        console.error('Cash Booking Report patch failed', err);
+        this.toast.error('Error', err?.error?.message || 'Failed to save');
+      }
+    });
+  }
+
   openEntry(r: { id?: string }): void {
-    if (!r?.id) return;
+    if (!r?.id || this.editingItemId) return;
     this.router.navigate(['/cash-booking/edit', r.id]);
   }
 
@@ -109,6 +152,7 @@ export class CashBookingReportComponent implements OnInit {
   }
 
   load(pageIdx: number): void {
+    this.cancelEdit();
     this.page = pageIdx;
     this.loading = true;
     this.api.get<PageResponse<any>>('/cash-bookings/search', this.params()).subscribe({

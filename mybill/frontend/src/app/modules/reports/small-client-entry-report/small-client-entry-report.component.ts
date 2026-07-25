@@ -144,34 +144,36 @@ import { PdfConfirmDialogComponent } from '../../master/monthly-courier-quotatio
                          [ngModelOptions]="{standalone: true}" placeholder="Description">
                 </td>
                 <td class="cr-actions-cell" (click)="$event.stopPropagation()">
-                  <ng-container *ngIf="editingItemId !== item.id">
-                    <button mat-icon-button type="button" (click)="viewInvoice(item)" matTooltip="View invoice" class="cr-action-btn cr-action-view">
-                      <mat-icon>visibility</mat-icon>
-                    </button>
-                    <button mat-icon-button type="button" (click)="viewBreakup(item)" matTooltip="View breakup" class="cr-action-btn cr-action-breakup">
-                      <mat-icon>table_chart</mat-icon>
-                    </button>
-                    <button mat-icon-button type="button" [matMenuTriggerFor]="docMenu" matTooltip="More" class="cr-action-btn">
-                      <mat-icon>more_vert</mat-icon>
-                    </button>
-                    <mat-menu #docMenu="matMenu">
-                      <button mat-menu-item type="button" (click)="printInvoice(item)"><mat-icon>print</mat-icon> Print invoice</button>
-                      <button mat-menu-item type="button" (click)="downloadInvoice(item)"><mat-icon>download</mat-icon> Download invoice PDF</button>
-                      <button mat-menu-item type="button" (click)="printBreakup(item)"><mat-icon>print</mat-icon> Print breakup</button>
-                      <button mat-menu-item type="button" (click)="downloadBreakup(item)"><mat-icon>download</mat-icon> Download breakup PDF</button>
-                    </mat-menu>
-                    <button mat-icon-button type="button" (click)="startEdit(item)" matTooltip="Edit status" class="cr-action-btn cr-action-edit">
-                      <mat-icon>edit</mat-icon>
-                    </button>
-                  </ng-container>
-                  <ng-container *ngIf="editingItemId === item.id">
-                    <button mat-icon-button type="button" color="primary" (click)="saveEdit(item)" matTooltip="Save" class="cr-action-btn cr-action-save">
-                      <mat-icon>check</mat-icon>
-                    </button>
-                    <button mat-icon-button type="button" (click)="cancelEdit()" matTooltip="Cancel" class="cr-action-btn cr-action-cancel">
-                      <mat-icon>close</mat-icon>
-                    </button>
-                  </ng-container>
+                  <div class="cr-actions-flex">
+                    <ng-container *ngIf="editingItemId !== item.id">
+                      <button mat-icon-button type="button" (click)="viewInvoice(item)" matTooltip="View invoice" class="cr-action-btn cr-action-view">
+                        <mat-icon>visibility</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" (click)="viewBreakup(item)" matTooltip="View breakup" class="cr-action-btn cr-action-breakup">
+                        <mat-icon>table_chart</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" [matMenuTriggerFor]="docMenu" matTooltip="More" class="cr-action-btn">
+                        <mat-icon>more_vert</mat-icon>
+                      </button>
+                      <mat-menu #docMenu="matMenu">
+                        <button mat-menu-item type="button" (click)="printInvoice(item)"><mat-icon>print</mat-icon> Print invoice</button>
+                        <button mat-menu-item type="button" (click)="downloadInvoice(item)"><mat-icon>download</mat-icon> Download invoice PDF</button>
+                        <button mat-menu-item type="button" (click)="printBreakup(item)"><mat-icon>print</mat-icon> Print breakup</button>
+                        <button mat-menu-item type="button" (click)="downloadBreakup(item)"><mat-icon>download</mat-icon> Download breakup PDF</button>
+                      </mat-menu>
+                      <button mat-icon-button type="button" (click)="startEdit(item)" matTooltip="Edit status" class="cr-action-btn cr-action-edit">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                    </ng-container>
+                    <ng-container *ngIf="editingItemId === item.id">
+                      <button mat-icon-button type="button" color="primary" (click)="saveEdit(item)" matTooltip="Save" class="cr-action-btn cr-action-save">
+                        <mat-icon>check</mat-icon>
+                      </button>
+                      <button mat-icon-button type="button" (click)="cancelEdit()" matTooltip="Cancel" class="cr-action-btn cr-action-cancel">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </ng-container>
+                  </div>
                 </td>
               </tr>
               <tr *ngIf="data.length === 0 && !loading" class="cr-empty-row">
@@ -332,6 +334,7 @@ import { PdfConfirmDialogComponent } from '../../master/monthly-courier-quotatio
 
     /* ── Actions Cell ── */
     .cr-actions-cell { text-align: center; white-space: nowrap; }
+    .cr-actions-flex { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
     .cr-action-btn { transition: color 0.15s ease, background-color 0.15s ease; }
     .cr-action-btn:hover { background: #f1f5f9; }
     .cr-action-view mat-icon { color: #3b82f6; }

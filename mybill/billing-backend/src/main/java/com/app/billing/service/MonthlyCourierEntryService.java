@@ -113,7 +113,8 @@ public class MonthlyCourierEntryService {
         return PaginationUtil.toPageResponse(slice, page, size, total);
     }
 
-    private List<MonthlyCourierEntry> filterAndSearchEntries(List<MonthlyCourierEntry> list, String search, String fieldsStr) {
+    List<MonthlyCourierEntry> filterAndSearchEntries(List<MonthlyCourierEntry> list, String search, String fieldsStr) {
+        log.info("filterAndSearchEntries called with search: '{}', fieldsStr: '{}'", search, fieldsStr);
         if (search == null || search.trim().isEmpty()) {
             return list;
         }
@@ -129,6 +130,7 @@ public class MonthlyCourierEntryService {
         }
 
         final List<String> searchFields = fields;
+        log.info("Resolved searchFields: {}", searchFields);
         return list.stream().filter(e -> {
             boolean match = false;
             if (searchFields.contains("date") && e.getEntryDate() != null && e.getEntryDate().toString().contains(s)) {

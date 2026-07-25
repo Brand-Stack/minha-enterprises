@@ -131,7 +131,9 @@ public class AccountingService {
             String entryType,
             Integer calendarMonth,
             Integer calendarYear) {
-        return filterEntries(dateFrom, dateTo, entryType, calendarMonth, calendarYear).stream()
+        List<AccountingEntry> filtered = new ArrayList<>(filterEntries(dateFrom, dateTo, entryType, calendarMonth, calendarYear));
+        sortAccountingEntries(filtered, "entryDate", "desc");
+        return filtered.stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -186,6 +188,18 @@ public class AccountingService {
                     return true;
                 })
                 .collect(Collectors.toList());
+    }
+
+    public BigDecimal getTotalAmountForFilters(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String entryType,
+            Integer calendarMonth,
+            Integer calendarYear) {
+        List<AccountingEntry> filtered = filterEntries(dateFrom, dateTo, entryType, calendarMonth, calendarYear);
+        return filtered.stream()
+                .map(e -> e.getAmount() != null ? e.getAmount() : ZERO)
+                .reduce(ZERO, BigDecimal::add);
     }
 
     private static void sortAccountingEntries(List<AccountingEntry> list, String sortBy, String sortDir) {

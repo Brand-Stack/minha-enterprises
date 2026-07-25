@@ -90,27 +90,95 @@ public class ExpenseService {
         return toDto(saved);
     }
     
-    public PageResponse<ExpenseDto> findAll(int page, int size, String sortBy, String sortDir) {
-        Pageable pageable = PaginationUtil.createPageable(page, size, sortBy, sortDir);
-        Page<Expense> expenses = expenseRepository.findAll(pageable);
-        return PaginationUtil.toPageResponse(expenses.map(this::toDto));
+    public PageResponse<ExpenseDto> findAll(int page, int size, String sortBy, String sortDir, Integer calendarMonth, Integer calendarYear) {
+        List<Expense> all = expenseRepository.findAll();
+        List<Expense> filtered = filterExpenses(all, calendarMonth, calendarYear);
+        return getPageResponse(filtered, page, size, sortBy, sortDir);
     }
     
-    public PageResponse<ExpenseDto> findByDateRange(LocalDate startDate, LocalDate endDate, int page, int size) {
-        Pageable pageable = PaginationUtil.createPageable(page, size, "expenseDate", "desc");
-        Page<Expense> expenses = expenseRepository.findByExpenseDateBetween(startDate, endDate, pageable);
-        return PaginationUtil.toPageResponse(expenses.map(this::toDto));
+    public PageResponse<ExpenseDto> findByDateRange(LocalDate startDate, LocalDate endDate, int page, int size, Integer calendarMonth, Integer calendarYear) {
+        List<Expense> all = expenseRepository.findByExpenseDateBetween(startDate, endDate);
+        List<Expense> filtered = filterExpenses(all, calendarMonth, calendarYear);
+        return getPageResponse(filtered, page, size, "expenseDate", "desc");
     }
     
-    public List<ExpenseDto> findByCategory(String category) {
-        List<Expense> expenses = expenseRepository.findByCategory(category);
-        return expenses.stream().map(this::toDto).collect(Collectors.toList());
+    public List<ExpenseDto> findByCategory(String category, Integer calendarMonth, Integer calendarYear) {
+        List<Expense> all = expenseRepository.findByCategory(category);
+        List<Expense> filtered = filterExpenses(all, calendarMonth, calendarYear);
+        return filtered.stream().map(this::toDto).collect(Collectors.toList());
     }
     
-    public PageResponse<ExpenseDto> findByCategoryAndDateRange(String category, LocalDate startDate, LocalDate endDate, int page, int size) {
-        Pageable pageable = PaginationUtil.createPageable(page, size, "expenseDate", "desc");
-        Page<Expense> expenses = expenseRepository.findByCategoryAndExpenseDateBetween(category, startDate, endDate, pageable);
-        return PaginationUtil.toPageResponse(expenses.map(this::toDto));
+    public PageResponse<ExpenseDto> findByCategoryAndDateRange(String category, LocalDate startDate, LocalDate endDate, int page, int size, Integer calendarMonth, Integer calendarYear) {
+        List<Expense> all = expenseRepository.findByCategoryAndExpenseDateBetween(category, startDate, endDate);
+        List<Expense> filtered = filterExpenses(all, calendarMonth, calendarYear);
+        return getPageResponse(filtered, page, size, "expenseDate", "desc");
+    }
+
+    private List<Expense> filterExpenses(List<Expense> list, Integer calendarMonth, Integer calendarYear) {
+        if (calendarMonth == null && calendarYear == null) {
+            return list;
+        }
+        return list.stream().filter(e -> {
+            if (e.getExpenseDate() == null) {
+                return false;
+            }
+            LocalDate d = e.getExpenseDate();
+            if (calendarMonth != null && d.getMonthValue() != calendarMonth) {
+                return false;
+            }
+            if (calendarYear != null && d.getYear() != calendarYear) {
+                return false;
+            }
+            return true;
+        }).collect(Collectors.toList());
+    }
+
+    private void sortExpenses(List<Expense> list, final String sortBy, final String sortDir) {
+        final String field = (sortBy == null || sortBy.trim().isEmpty()) ? "expenseDate" : sortBy.trim();
+        final boolean desc = "desc".equalsIgnoreCase(sortDir);
+        list.sort((a, b) -> {
+            int comp = 0;
+            if ("expenseDate".equals(field)) {
+                LocalDate da = a.getExpenseDate();
+                LocalDate db = b.getExpenseDate();
+                if (da != null && db != null) comp = da.compareTo(db);
+                else if (da != null) comp = 1;
+                else if (db != null) comp = -1;
+            } else if ("expenseNumber".equals(field)) {
+                String na = a.getExpenseNumber();
+                String nb = b.getExpenseNumber();
+                if (na != null && nb != null) comp = na.compareTo(nb);
+                else if (na != null) comp = 1;
+                else if (nb != null) comp = -1;
+            } else if ("amount".equals(field)) {
+                BigDecimal aa = a.getAmount();
+                BigDecimal ab = b.getAmount();
+                if (aa != null && ab != null) comp = aa.compareTo(ab);
+                else if (aa != null) comp = 1;
+                else if (ab != null) comp = -1;
+            } else if ("category".equals(field)) {
+                String ca = a.getCategory();
+                String cb = b.getCategory();
+                if (ca != null && cb != null) comp = ca.compareTo(cb);
+                else if (ca != null) comp = 1;
+                else if (cb != null) comp = -1;
+            }
+            return desc ? -comp : comp;
+        });
+    }
+
+    private PageResponse<ExpenseDto> getPageResponse(List<Expense> list, int page, int size, String sortBy, String sortDir) {
+        sortExpenses(list, sortBy, sortDir);
+        int total = list.size();
+        int from = page * size;
+        if (from >= total) {
+            return PaginationUtil.toPageResponse(List.of(), page, size, total);
+        }
+        int to = Math.min(from + size, total);
+        List<ExpenseDto> slice = list.subList(from, to).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        return PaginationUtil.toPageResponse(slice, page, size, total);
     }
     
     public List<String> getDefaultCategories() {

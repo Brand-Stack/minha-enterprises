@@ -295,4 +295,19 @@ public class CashBookingService {
                 .lastUpdatedBy(e.getLastUpdatedBy())
                 .build();
     }
+
+    @Transactional
+    public CashBookingDto patchStatus(String id, String amountStatus, String remarks) {
+        CashBooking e = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Cash booking not found: " + id));
+        if (amountStatus != null) {
+            e.setAmountStatus(amountStatus);
+        }
+        if (remarks != null) {
+            e.setRemarks(remarks);
+        }
+        auditUtil.setUpdatedBy(e);
+        e = repository.save(e);
+        return toDto(e);
+    }
 }

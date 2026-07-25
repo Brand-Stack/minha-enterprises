@@ -53,8 +53,10 @@ public class ExpenseController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "expenseDate") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDir) {
-        return ResponseEntity.ok(expenseService.findAll(page, size, sortBy, sortDir));
+            @RequestParam(defaultValue = "desc") String sortDir,
+            @RequestParam(required = false) Integer calendarMonth,
+            @RequestParam(required = false) Integer calendarYear) {
+        return ResponseEntity.ok(expenseService.findAll(page, size, sortBy, sortDir, calendarMonth, calendarYear));
     }
     
     @GetMapping("/filter")
@@ -63,14 +65,19 @@ public class ExpenseController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(expenseService.findByDateRange(startDate, endDate, page, size));
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer calendarMonth,
+            @RequestParam(required = false) Integer calendarYear) {
+        return ResponseEntity.ok(expenseService.findByDateRange(startDate, endDate, page, size, calendarMonth, calendarYear));
     }
     
     @GetMapping("/category/{category}")
     @Operation(summary = "Get expenses by category", description = "Retrieve expenses by category")
-    public ResponseEntity<List<ExpenseDto>> findByCategory(@PathVariable String category) {
-        return ResponseEntity.ok(expenseService.findByCategory(category));
+    public ResponseEntity<List<ExpenseDto>> findByCategory(
+            @PathVariable String category,
+            @RequestParam(required = false) Integer calendarMonth,
+            @RequestParam(required = false) Integer calendarYear) {
+        return ResponseEntity.ok(expenseService.findByCategory(category, calendarMonth, calendarYear));
     }
     
     @GetMapping("/category/{category}/filter")
@@ -80,8 +87,10 @@ public class ExpenseController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(expenseService.findByCategoryAndDateRange(category, startDate, endDate, page, size));
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer calendarMonth,
+            @RequestParam(required = false) Integer calendarYear) {
+        return ResponseEntity.ok(expenseService.findByCategoryAndDateRange(category, startDate, endDate, page, size, calendarMonth, calendarYear));
     }
     
     @GetMapping("/categories")

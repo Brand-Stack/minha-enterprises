@@ -153,3 +153,20 @@
   .cr-filters { padding: 16px; }
   .cr-table th, .cr-table td { padding: 10px 12px; }
 }
+
+.cr-row-editing { background: #fefce8 !important; }
+.cr-actions-flex { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; }
+.cr-action-save mat-icon { color: #16a34a; }
+.cr-action-cancel mat-icon { color: #ef4444; }
+.cr-edit-field { width: 100%; min-width: 160px; max-width: 260px; margin-bottom: 0 !important; }
+.cr-edit-field .mat-mdc-form-field-subscript-wrapper { display: none; }
+.cr-inline-input {
+  width: 100%; max-width: 320px;
+  padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-sizing: border-box; font-size: 13px; color: #0f172a;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cr-inline-input:focus {
+  border-color: #3b82f6; outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
