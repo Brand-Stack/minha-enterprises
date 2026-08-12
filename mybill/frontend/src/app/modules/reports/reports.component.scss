@@ -1,0 +1,80 @@
+.reports-page {
+  padding: 24px;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.reports-hero {
+  margin-bottom: 24px;
+}
+.reports-hero__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reports-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+.reports-sub {
+  margin: 0;
+  font-size: 0.925rem;
+  color: #64748b;
+  max-width: 48rem;
+  line-height: 1.5;
+}
+
+.reports-card {
+  background: #fff;
+  border-radius: 16px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06) !important;
+  overflow: hidden;
+}
+
+.reports-tabs ::ng-deep .mat-mdc-tab-header {
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+  border-bottom: 1px solid #e2e8f0;
+}
+.reports-tabs ::ng-deep .mat-mdc-tab .mdc-tab__text-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-icon {
+  font-size: 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin-right: 4px;
+  opacity: 0.7;
+}
+.reports-tabs ::ng-deep .mat-mdc-tab.mdc-tab--active .tab-icon {
+  opacity: 1;
+}
+
+.tab-body-pad {
+  padding: 24px 16px 16px;
+}
+
+.rpt-fade {
+  animation: rptFadeIn 0.4s ease-out both;
+}
+::ng-deep .rpt-animate {
+  animation: rptFadeIn 0.35s ease-out both;
+}
+@keyframes rptFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 768px) {
+  .reports-page { padding: 16px; }
+  .tab-body-pad { padding: 16px 8px 8px; }
+  .reports-title { font-size: 1.375rem; }
+}
