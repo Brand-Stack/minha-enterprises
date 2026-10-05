@@ -1,0 +1,229 @@
+// Component Base Styles
+// Shared styles for common UI components
+
+// Cards - White background, subtle shadow, rounded corners
+.card {
+  background: var(--color-neutral-white);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-card-padding);
+  border: 1px solid #E5E7EB;
+  transition: var(--transition-base);
+  
+  // Hover elevation - Subtle lift for interactivity
+  &:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+// Metric Card - Icon, label, large value
+.metric-card {
+  @extend .card;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  
+  .metric-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    
+    .metric-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--color-primary-main);
+    }
+    
+    .metric-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-neutral-light);
+    }
+  }
+  
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-neutral-darkest);
+    line-height: 1.2;
+  }
+}
+
+// Buttons - Primary, secondary, ghost variants
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 12px 24px;
+  border-radius: var(--radius-button);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-primary);
+  border: none;
+  cursor: pointer;
+  transition: var(--transition-base);
+  
+  // Micro-interaction on press - Subtle scale down
+  &:active {
+    transform: scale(0.98);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-primary {
+  @extend .btn;
+  background: var(--color-primary-main);
+  color: var(--color-neutral-white);
+  
+  &:hover:not(:disabled) {
+    background: var(--color-primary-dark);
+  }
+}
+
+.btn-secondary {
+  @extend .btn;
+  background: var(--color-neutral-white);
+  color: var(--color-neutral-dark);
+  border: 1px solid #D1D5DB;
+  
+  &:hover:not(:disabled) {
+    background: var(--color-neutral-lightest);
+  }
+}
+
+.btn-ghost {
+  @extend .btn;
+  background: transparent;
+  color: var(--color-neutral-light);
+  padding: 8px 12px;
+  
+  &:hover:not(:disabled) {
+    background: var(--color-neutral-lightest);
+  }
+}
+
+// Inputs - Consistent height, padding, focus states
+.input-base {
+  height: 44px;
+  padding: var(--spacing-input-padding);
+  border-radius: var(--radius-input);
+  border: 1px solid #D1D5DB;
+  font-size: 14px;
+  font-family: var(--font-primary);
+  background: var(--color-neutral-white);
+  color: var(--color-neutral-dark);
+  transition: var(--transition-base);
+  width: 100%;
+  
+  // Focus state - Primary color border with subtle glow
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary-main);
+    box-shadow: var(--shadow-focus);
+  }
+  
+  &::placeholder {
+    color: var(--color-neutral-lighter);
+  }
+}
+
+// Badges - Small status indicators
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: var(--radius-badge);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-status {
+  @extend .badge;
+  padding: 2px 8px;
+  border-radius: var(--radius-badge-status);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+// Tables - Professional data display
+.table-container {
+  background: var(--color-neutral-white);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  border: 1px solid #E5E7EB;
+}
+
+.table-header {
+  background: #F9FAFB;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--color-neutral-light);
+  padding: 12px 16px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.table-row {
+  padding: 16px;
+  border-bottom: 1px solid #F3F4F6;
+  transition: var(--transition-base);
+  
+  &:hover {
+    background: #F9FAFB;
+  }
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.table-cell {
+  font-size: 14px;
+  color: var(--color-neutral-dark);
+}
+
+// Empty State - Centered illustration with message
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4xl) var(--spacing-xl);
+  text-align: center;
+  
+  .empty-illustration {
+    width: 120px;
+    height: 120px;
+    margin-bottom: var(--spacing-xl);
+    opacity: 0.6;
+  }
+  
+  .empty-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-neutral-darkest);
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .empty-description {
+    font-size: 14px;
+    color: var(--color-neutral-light);
+    margin-bottom: var(--spacing-xl);
+  }
+}
+
+// Focus indicators - Accessible focus rings
+*:focus-visible {
+  outline: 2px solid var(--color-primary-main);
+  outline-offset: 2px;
+  border-radius: var(--radius-button);
+}
+

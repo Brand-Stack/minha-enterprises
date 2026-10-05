@@ -1,0 +1,454 @@
+<div class="dash-page" #dashRoot>
+  <header class="dash-header js-dash-header">
+    <div>
+      <h1 class="dash-header__title">Courier Dashboard</h1>
+      <p class="dash-header__sub">Operations, revenue, and live shipment search</p>
+    </div>
+  </header>
+
+  <!-- 1. AWB Search (hero) -->
+  <section class="dash-section dash-awb js-dash-awb">
+    <app-awb-search-panel #awbPanel></app-awb-search-panel>
+  </section>
+
+  <!-- 1.5. ATTENDANCE & PAYROLL SUMMARY SECTION (LOADS TOP BY DEFAULT) -->
+  <section class="dash-block js-dash-cards" style="margin-bottom: 24px;" *ngIf="hasAttendanceDashboardAccess()">
+    <mat-card class="rev-filter-card" style="margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div>
+          <h2 class="dash-block__title dash-block__title--blue" style="margin: 0;">Attendance &amp; Payroll Management</h2>
+          <p class="dash-block__range muted" style="margin: 4px 0 0 0;">
+            {{ isAdminUser ? 'Organization-wide Attendance Overview (Click cards to view detailed employee list)' : 'Personal Attendance Summary' }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Independent Attendance Filter Controls -->
+      <div class="rev-quick">
+        <button mat-stroked-button type="button" [color]="attendancePreset === 'today' ? 'primary' : ''" (click)="setAttendancePreset('today')">Today</button>
+        <button mat-stroked-button type="button" [color]="attendancePreset === 'yesterday' ? 'primary' : ''" (click)="setAttendancePreset('yesterday')">Yesterday</button>
+        <button mat-stroked-button type="button" [color]="attendancePreset === 'week' ? 'primary' : ''" (click)="setAttendancePreset('week')">This week</button>
+        <button mat-stroked-button type="button" [color]="attendancePreset === 'month' ? 'primary' : ''" (click)="setAttendancePreset('month')">This month</button>
+      </div>
+
+      <div class="rev-custom" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>From</mat-label>
+          <input matInput [matDatepicker]="af" [(ngModel)]="customAttendanceFrom" (dateChange)="setAttendancePreset('custom')" />
+          <mat-datepicker-toggle matSuffix [for]="af"></mat-datepicker-toggle>
+          <mat-datepicker #af></mat-datepicker>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>To</mat-label>
+          <input matInput [matDatepicker]="at" [(ngModel)]="customAttendanceTo" (dateChange)="setAttendancePreset('custom')" />
+          <mat-datepicker-toggle matSuffix [for]="at"></mat-datepicker-toggle>
+          <mat-datepicker #at></mat-datepicker>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="rev-f" *ngIf="isAdminUser">
+          <mat-label>Department</mat-label>
+          <mat-select [(ngModel)]="attendanceDepartment" (selectionChange)="applyAttendanceFilters()">
+            <mat-option value="">All Departments</mat-option>
+            <mat-option *ngFor="let d of departmentsList" [value]="d">{{ d }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <div style="display: flex; gap: 8px;">
+          <button mat-stroked-button type="button" (click)="clearAttendanceFilters()">Clear</button>
+          <button mat-flat-button color="primary" type="button" (click)="applyAttendanceFilters()">
+            <mat-icon>filter_alt</mat-icon> Apply
+          </button>
+        </div>
+      </div>
+    </mat-card>
+
+    <!-- Admin Attendance Interactive KPI Cards -->
+    <div class="dash-cards dash-cards--fluid" *ngIf="isAdminUser && adminAttendanceKpis">
+      <article class="dash-card">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>groups</mat-icon></div>
+        </div>
+        <div class="dash-card__label">Total Employees</div>
+        <div class="dash-card__value">{{ adminAttendanceKpis.totalEmployees || 0 }}</div>
+      </article>
+
+      <article class="dash-card" style="cursor: pointer;" (click)="openKpiSummaryModal('PRESENT', 'Present Employees')">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>check_circle</mat-icon></div>
+          <span class="dash-card__trend" style="color: #10B981;">View List →</span>
+        </div>
+        <div class="dash-card__label">Present Today</div>
+        <div class="dash-card__value" style="color: #10B981;">{{ adminAttendanceKpis.presentToday || 0 }}</div>
+      </article>
+
+      <article class="dash-card" style="cursor: pointer;" (click)="openKpiSummaryModal('ABSENT', 'Absent Employees')">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>cancel</mat-icon></div>
+          <span class="dash-card__trend" style="color: #EF4444;">View List →</span>
+        </div>
+        <div class="dash-card__label">Absent Today</div>
+        <div class="dash-card__value" style="color: #EF4444;">{{ adminAttendanceKpis.absentToday || 0 }}</div>
+      </article>
+
+      <article class="dash-card" style="cursor: pointer;" (click)="openKpiSummaryModal('LEAVE', 'Employees On Leave')">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>flight_takeoff</mat-icon></div>
+          <span class="dash-card__trend" style="color: #F59E0B;">View List →</span>
+        </div>
+        <div class="dash-card__label">On Leave</div>
+        <div class="dash-card__value" style="color: #F59E0B;">{{ adminAttendanceKpis.onLeave || 0 }}</div>
+      </article>
+
+      <article class="dash-card" style="cursor: pointer;" (click)="openKpiSummaryModal('LATE', 'Late Arrivals')">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>schedule</mat-icon></div>
+          <span class="dash-card__trend" style="color: #EAB308;">View List →</span>
+        </div>
+        <div class="dash-card__label">Late Arrivals</div>
+        <div class="dash-card__value" style="color: #EAB308;">{{ adminAttendanceKpis.lateEmployees || 0 }}</div>
+      </article>
+
+      <article class="dash-card" style="cursor: pointer;" (click)="openKpiSummaryModal('OVERTIME', 'Overtime Details')">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>timer</mat-icon></div>
+          <span class="dash-card__trend" style="color: #8B5CF6;">View List →</span>
+        </div>
+        <div class="dash-card__label">Total Overtime</div>
+        <div class="dash-card__value" style="color: #8B5CF6;">{{ adminAttendanceKpis.totalOvertimeHours || 0 }} hrs</div>
+      </article>
+    </div>
+
+    <!-- Employee Personal Attendance KPIs -->
+    <div class="dash-cards dash-cards--fluid" *ngIf="!isAdminUser && empAttendanceKpis">
+      <article class="dash-card">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>today</mat-icon></div>
+        </div>
+        <div class="dash-card__label">Today Status</div>
+        <div class="dash-card__value">{{ empAttendanceKpis.todayStatus || 'NOT CHECKED IN' }}</div>
+      </article>
+      <article class="dash-card">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>login</mat-icon></div>
+        </div>
+        <div class="dash-card__label">Check-In Time</div>
+        <div class="dash-card__value" style="color: #10B981;">{{ formatTime(empAttendanceKpis.checkInTime) }}</div>
+      </article>
+      <article class="dash-card">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>logout</mat-icon></div>
+        </div>
+        <div class="dash-card__label">Check-Out Time</div>
+        <div class="dash-card__value" style="color: #F59E0B;">{{ formatTime(empAttendanceKpis.checkOutTime) }}</div>
+      </article>
+      <article class="dash-card">
+        <div class="dash-card__top">
+          <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>schedule</mat-icon></div>
+        </div>
+        <div class="dash-card__label">Working Hours Today</div>
+        <div class="dash-card__value" style="color: #8B5CF6;">{{ empAttendanceKpis.todayWorkingHours || 0 }} hrs</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 2. Revenue date range -->
+  <section class="dash-section dash-filter js-dash-filter">
+    <mat-card class="rev-filter-card">
+      <div class="rev-filter-title">Revenue date range</div>
+      <p class="rev-filter-hint">Set any combination of dates, courier, and status — empty fields are ignored. Click Apply filters to load.</p>
+      <div class="rev-quick">
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('all')">All days</button>
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('yesterday')">Yesterday</button>
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('today')">Today</button>
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('week')">This week</button>
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('month')">This month</button>
+        <button mat-stroked-button type="button" (click)="setRevenuePreset('last30')">Last 30 days</button>
+      </div>
+      <div class="rev-custom">
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>From</mat-label>
+          <input matInput [matDatepicker]="rf" [(ngModel)]="customRevenueFrom" (dateChange)="setRevenuePreset('custom')" />
+          <mat-datepicker-toggle matSuffix [for]="rf"></mat-datepicker-toggle>
+          <mat-datepicker #rf></mat-datepicker>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>To</mat-label>
+          <input matInput [matDatepicker]="rt" [(ngModel)]="customRevenueTo" (dateChange)="setRevenuePreset('custom')" />
+          <mat-datepicker-toggle matSuffix [for]="rt"></mat-datepicker-toggle>
+          <mat-datepicker #rt></mat-datepicker>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>Courier</mat-label>
+          <mat-select [(ngModel)]="revenueCourier">
+            <mat-option value="">All</mat-option>
+            <mat-option *ngFor="let c of courierOptions" [value]="c">{{ c }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="rev-f">
+          <mat-label>Status</mat-label>
+          <mat-select [(ngModel)]="revenueStatus">
+            <mat-option value="">All</mat-option>
+            <mat-option *ngFor="let s of statusOptions" [value]="s">{{ s }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+      <div class="rev-filter-actions">
+        <button mat-stroked-button type="button" (click)="clearRevenueFilters()">Clear</button>
+        <button mat-flat-button color="primary" type="button" class="rev-apply" (click)="applyRevenueFilters()">
+          <mat-icon>filter_alt</mat-icon> Apply filters
+        </button>
+      </div>
+    </mat-card>
+  </section>
+
+  <section class="dash-empty-hint" *ngIf="!loadingDash && !dashboardLoaded">
+    <mat-card class="rev-filter-card">
+      <p>Click <strong>Apply filters</strong> to load data. Use quick presets, optional dates, courier, or status — leave fields empty to skip that filter.</p>
+    </mat-card>
+  </section>
+
+  <!-- Skeleton while loading -->
+  <div class="dash-skeleton-grid" *ngIf="loadingDash">
+    <div class="dash-skel" *ngFor="let _ of skeletonPlaceholders"></div>
+  </div>
+
+  <ng-container *ngIf="!loadingDash && payload && dashboardLoaded">
+    <!-- 3. Revenue / client ops cards -->
+    <section class="dash-block js-dash-cards" *ngIf="revenueCards.length">
+      <h2 class="dash-block__title dash-block__title--blue">Revenue &amp; shipments</h2>
+      <p class="dash-block__range" *ngIf="payload.revenueFrom && payload.revenueTo">
+        {{ payload.revenueFrom }} → {{ payload.revenueTo }}
+      </p>
+      <div class="dash-cards dash-cards--fluid">
+        <article
+          class="dash-card"
+          *ngFor="let c of revenueCards"
+          [attr.data-card-key]="c.key"
+        >
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon">
+              <mat-icon>{{ c.icon }}</mat-icon>
+            </div>
+            <span class="dash-card__trend" *ngIf="c.trend">{{ c.trend }}</span>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div
+            class="dash-card__value js-dash-metric"
+            [attr.data-int-target]="c.intTarget != null ? c.intTarget : null"
+            [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null"
+          >
+            {{ c.display }}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 4. Collection -->
+    <section class="dash-block js-dash-cards" *ngIf="collectionCards.length">
+      <h2 class="dash-block__title dash-block__title--violet">Collection center</h2>
+      <p class="dash-block__range muted" *ngIf="payload.revenueFrom && payload.revenueTo">Same date range as above</p>
+      <div class="dash-cards dash-cards--fluid">
+        <article class="dash-card dash-card--collection" *ngFor="let c of collectionCards" [attr.data-card-key]="c.key">
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon">
+              <mat-icon>{{ c.icon }}</mat-icon>
+            </div>
+            <span class="dash-card__trend" *ngIf="c.trend">{{ c.trend }}</span>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div
+            class="dash-card__value js-dash-metric"
+            [attr.data-int-target]="c.intTarget != null ? c.intTarget : null"
+            [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null"
+          >
+            {{ c.display }}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 5. Cash booking -->
+    <section class="dash-block js-dash-cards" *ngIf="cashCards.length">
+      <h2 class="dash-block__title dash-block__title--teal">Cash booking</h2>
+      <p class="dash-block__range muted" *ngIf="payload.revenueFrom && payload.revenueTo">Same date range as above</p>
+      <div class="dash-cards dash-cards--fluid">
+        <article class="dash-card dash-card--cash" *ngFor="let c of cashCards" [attr.data-card-key]="c.key">
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon">
+              <mat-icon>{{ c.icon }}</mat-icon>
+            </div>
+            <span class="dash-card__trend" *ngIf="c.trend">{{ c.trend }}</span>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div
+            class="dash-card__value js-dash-metric"
+            [attr.data-int-target]="c.intTarget != null ? c.intTarget : null"
+            [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null"
+          >
+            {{ c.display }}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="dash-block js-dash-cards" *ngIf="clientEntryCards.length">
+      <h2 class="dash-block__title dash-block__title--blue">Client entry</h2>
+      <p class="dash-block__range muted" *ngIf="payload.revenueFrom || payload.revenueTo">
+        Filtered by revenue date range<span *ngIf="payload.revenueFrom && payload.revenueTo">: {{ payload.revenueFrom }} → {{ payload.revenueTo }}</span>
+      </p>
+      <div class="dash-cards dash-cards--fluid">
+        <article class="dash-card dash-card--client" *ngFor="let c of clientEntryCards" [attr.data-card-key]="c.key">
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon">
+              <mat-icon>{{ c.icon }}</mat-icon>
+            </div>
+            <span class="dash-card__trend" *ngIf="c.trend">{{ c.trend }}</span>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div
+            class="dash-card__value js-dash-metric"
+            [attr.data-int-target]="c.intTarget != null ? c.intTarget : null"
+            [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null"
+          >
+            {{ c.display }}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="dash-block js-dash-cards" *ngIf="smallClientEntryCards.length">
+      <h2 class="dash-block__title dash-block__title--green">Small client entry</h2>
+      <p class="dash-block__range muted" *ngIf="payload.revenueFrom && payload.revenueTo">Same date range as revenue filters</p>
+      <div class="dash-cards dash-cards--fluid">
+        <article class="dash-card dash-card--client" *ngFor="let c of smallClientEntryCards" [attr.data-card-key]="c.key">
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon"><mat-icon>{{ c.icon }}</mat-icon></div>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div class="dash-card__value js-dash-metric" [attr.data-int-target]="c.intTarget != null ? c.intTarget : null" [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null">{{ c.display }}</div>
+        </article>
+      </div>
+    </section>
+
+    <section
+      class="dash-block dash-awb-groups"
+      *ngIf="
+        (payload.clientEntryAwbGroups?.length || 0) +
+          (payload.smallClientEntryAwbGroups?.length || 0) +
+          (payload.collectionCenterAwbGroups?.length || 0) +
+          (payload.cashBookingAwbGroups?.length || 0) >
+        0
+      "
+    >
+      <h2 class="dash-block__title">Customer / Client</h2>
+      <div class="dash-awb-groups__grid">
+        <mat-card class="dash-awb-group-card dash-awb-group-card--client" *ngIf="hasCard('VIEW_CLIENT_ENTRY_SUMMARY') && payload.clientEntryAwbGroups?.length">
+          <mat-card-title>Client Entry</mat-card-title>
+          <mat-card-content class="dash-awb-group-card__content">
+            <div class="dash-awb-group-item" *ngFor="let g of payload.clientEntryAwbGroups">
+              <div class="dash-awb-name">{{ g.name }} - {{ g.totalCount }}</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="dash-awb-group-card dash-awb-group-card--small" *ngIf="hasCard('VIEW_SMALL_CLIENT_ENTRY_SUMMARY') && payload.smallClientEntryAwbGroups?.length">
+          <mat-card-title>Small Client Entry</mat-card-title>
+          <mat-card-content class="dash-awb-group-card__content">
+            <div class="dash-awb-group-item" *ngFor="let g of payload.smallClientEntryAwbGroups">
+              <div class="dash-awb-name">{{ g.name }} - {{ g.totalCount }}</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="dash-awb-group-card dash-awb-group-card--collection" *ngIf="hasCard('VIEW_COLLECTION_CENTER_SUMMARY') && payload.collectionCenterAwbGroups?.length">
+          <mat-card-title>Collection Center</mat-card-title>
+          <mat-card-content class="dash-awb-group-card__content">
+            <div class="dash-awb-group-item" *ngFor="let g of payload.collectionCenterAwbGroups">
+              <div class="dash-awb-name">{{ g.name }} - {{ g.totalCount }}</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="dash-awb-group-card dash-awb-group-card--cash" *ngIf="hasCard('VIEW_CASH_BOOKING_SUMMARY') && payload.cashBookingAwbGroups?.length">
+          <mat-card-title>Cash Booking</mat-card-title>
+          <mat-card-content class="dash-awb-group-card__content">
+            <div class="dash-awb-group-item" *ngFor="let g of payload.cashBookingAwbGroups">
+              <div class="dash-awb-name">{{ g.name }} - {{ g.totalCount }}</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </section>
+
+    <!-- Ledger snapshot (accounting), separated from collection -->
+    <section class="dash-block dash-block--compact js-dash-cards" *ngIf="accountingCards.length">
+      <h2 class="dash-block__title">Ledger snapshot</h2>
+      <div class="dash-cards dash-cards--3">
+        <article class="dash-card dash-card--muted" *ngFor="let c of accountingCards" [attr.data-card-key]="c.key">
+          <div class="dash-card__top">
+            <div class="dash-card__icon-wrap js-dash-card-icon">
+              <mat-icon>{{ c.icon }}</mat-icon>
+            </div>
+          </div>
+          <div class="dash-card__label">{{ c.label }}</div>
+          <div
+            class="dash-card__value js-dash-metric"
+            [attr.data-int-target]="c.intTarget != null ? c.intTarget : null"
+            [attr.data-money-target]="c.moneyTarget != null ? c.moneyTarget : null"
+          >
+            {{ c.display }}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 6. Compact charts -->
+    <section class="dash-charts js-dash-charts">
+      <div class="dash-charts__row" *ngIf="hasCard('VIEW_CHART_DAILY_BOOKING_TREND') || hasCard('VIEW_CHART_STATUS_DISTRIBUTION')">
+        <mat-card class="dash-chart-card" *ngIf="hasCard('VIEW_CHART_DAILY_BOOKING_TREND')">
+          <mat-card-title>Daily booking trend</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="cdDaily"></canvas>
+          </mat-card-content>
+        </mat-card>
+        <mat-card class="dash-chart-card" *ngIf="hasCard('VIEW_CHART_STATUS_DISTRIBUTION')">
+          <mat-card-title>Status distribution</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="cdStatus"></canvas>
+          </mat-card-content>
+        </mat-card>
+      </div>
+      <div class="dash-charts__row" *ngIf="hasCard('VIEW_CHART_CASH_FLOW_TREND') && payload.cashFlowTrend?.length">
+        <mat-card class="dash-chart-card dash-chart-card--wide">
+          <mat-card-title>Cash flow trend (7 days)</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="cfFlow"></canvas>
+          </mat-card-content>
+        </mat-card>
+      </div>
+      <div
+        class="dash-charts__row"
+        *ngIf="(hasCard('VIEW_CHART_DAILY_COLLECTION_TREND') && payload.collection?.dailyCollectionTrend?.length) || (hasCard('VIEW_CHART_COLLECTION_AMOUNT_STATUS') && payload.collection?.amountStatusDistribution?.length)"
+      >
+        <mat-card class="dash-chart-card" *ngIf="hasCard('VIEW_CHART_DAILY_COLLECTION_TREND') && payload.collection?.dailyCollectionTrend?.length">
+          <mat-card-title>Daily collection trend</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="ccDaily"></canvas>
+          </mat-card-content>
+        </mat-card>
+        <mat-card class="dash-chart-card" *ngIf="hasCard('VIEW_CHART_COLLECTION_AMOUNT_STATUS') && payload.collection?.amountStatusDistribution?.length">
+          <mat-card-title>Collection amount status</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="ccAmt"></canvas>
+          </mat-card-content>
+        </mat-card>
+      </div>
+      <div class="dash-charts__row" *ngIf="hasCard('VIEW_CHART_COLLECTION_TREND_BY_MONTH') && payload.collection?.monthlyCollectionTrend?.length">
+        <mat-card class="dash-chart-card dash-chart-card--wide">
+          <mat-card-title>Collection trend by month</mat-card-title>
+          <mat-card-content class="dash-chart-card__body">
+            <canvas id="ccMonth"></canvas>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </section>
+  </ng-container>
+</div>
