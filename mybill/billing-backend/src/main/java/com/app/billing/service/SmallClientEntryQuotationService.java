@@ -639,17 +639,16 @@ public class SmallClientEntryQuotationService {
         entity.setExcludedFromReport(false);
 
         String shopId = entity.getShopId() != null ? entity.getShopId() : "DEFAULT_SHOP";
+        String currentInvoiceNum = entity.getInvoiceNumber().trim();
         List<SmallClientEntryQuotation> duplicates = repository.findAll().stream()
                 .filter(q -> !q.getId().equals(quotationId))
                 .filter(q -> Objects.equals(q.getShopId() != null ? q.getShopId() : "DEFAULT_SHOP", shopId))
-                .filter(q -> Objects.equals(q.getCustomerId(), entity.getCustomerId()))
-                .filter(q -> monthName.equalsIgnoreCase(q.getMonth()))
-                .filter(q -> Objects.equals(q.getYear(), year))
+                .filter(q -> StringUtils.hasText(q.getInvoiceNumber()) && q.getInvoiceNumber().trim().equalsIgnoreCase(currentInvoiceNum))
                 .filter(q -> Boolean.TRUE.equals(q.getInvoiceGenerated()) && !Boolean.TRUE.equals(q.getExcludedFromReport()))
                 .toList();
 
         for (SmallClientEntryQuotation dup : duplicates) {
-            log.info("Excluding duplicate small client entry report record id={} for customer={}, period={}-{}", dup.getId(), dup.getCustomerId(), monthName, year);
+            log.info("Excluding duplicate small client entry report record id={} matching invoiceNumber={}", dup.getId(), currentInvoiceNum);
             dup.setExcludedFromReport(true);
             auditUtil.setUpdatedBy(dup);
             repository.save(dup);

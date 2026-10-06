@@ -799,7 +799,25 @@ export class AttendanceSettingsComponent implements OnInit {
   }
 
   useCurrentLocation(): void {
-    if ('geolocation' in navigator) {
+    if (!('geolocation' in navigator)) {
+      this.toastService.error('Unsupported', 'Geolocation is not supported by your browser.');
+      return;
+    }
+
+    const isInsecureContext = window.isSecureContext === false &&
+      window.location.protocol === 'http:' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
+
+    if (isInsecureContext) {
+      this.toastService.warning(
+        'HTTP Browser Security Notice',
+        'Browsers block automatic GPS capture over plain HTTP IP connections. Please access via localhost or HTTPS, or type Office Latitude & Longitude manually.'
+      );
+      return;
+    }
+
+    const tryGetPosition = (highAccuracy: boolean) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           if (this.settings) {
@@ -809,24 +827,26 @@ export class AttendanceSettingsComponent implements OnInit {
           }
         },
         (err) => {
-          const errMsg = err.message || '';
-          const isSecureOriginErr = errMsg.toLowerCase().includes('secure origin') ||
-                                    errMsg.toLowerCase().includes('https') ||
-                                    err.code === 1;
-
-          if (isSecureOriginErr) {
-            this.toastService.warning(
-              'HTTP Browser Security Notice',
-              'Browsers block automatic GPS capture over plain HTTP IP connections. Please type or paste Office Latitude & Longitude manually in the input fields.'
-            );
+          if (highAccuracy) {
+            // High accuracy failed or timed out; fallback to standard accuracy
+            tryGetPosition(false);
           } else {
-            this.toastService.error('Location Error', 'Unable to capture GPS coordinates: ' + errMsg);
+            const errMsg = err.message || '';
+            if (err.code === 1) {
+              this.toastService.error('Permission Denied', 'Location permission was denied. Please allow location access in your browser.');
+            } else if (err.code === 2) {
+              this.toastService.error('Location Unavailable', 'Unable to determine your current location. Please check your device location settings.');
+            } else if (err.code === 3) {
+              this.toastService.error('Location Timeout', 'Location request timed out. Please try again.');
+            } else {
+              this.toastService.error('Location Error', 'Unable to capture GPS coordinates: ' + errMsg);
+            }
           }
         },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 5000 : 10000, maximumAge: 0 }
       );
-    } else {
-      this.toastService.error('Unsupported', 'Geolocation is not supported by your browser.');
-    }
+    };
+
+    tryGetPosition(true);
   }
 }
