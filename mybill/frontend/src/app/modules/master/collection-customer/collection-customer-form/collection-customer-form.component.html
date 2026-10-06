@@ -1,0 +1,266 @@
+<div class="ccf-container">
+  <!-- Page Header / Breadcrumb -->
+  <div class="ccf-header">
+    <div class="ccf-header-left">
+      <button mat-icon-button class="ccf-back-btn" (click)="cancel()" matTooltip="Back to list">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <div>
+        <h1 class="ccf-title">{{ isEdit ? 'Edit Collection Customer' : 'Register Collection Customer' }}</h1>
+        <p class="ccf-subtitle">Manage customer profile, billing address, tax info, and AWB inventory registry</p>
+      </div>
+    </div>
+    <div class="ccf-header-right" *ngIf="isEdit && lastUpdatedBy">
+      <span class="ccf-audit-pill">
+        <mat-icon>history</mat-icon> Last updated by {{ lastUpdatedBy }}
+      </span>
+    </div>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="save()">
+    <!-- Section 1: Basic Information -->
+    <mat-card class="ccf-card">
+      <div class="ccf-section-head">
+        <div class="ccf-sec-icon ccf-icon-blue"><mat-icon>person</mat-icon></div>
+        <div>
+          <h2 class="ccf-sec-title">Basic Information</h2>
+          <p class="ccf-sec-sub">Customer identity and contact details</p>
+        </div>
+      </div>
+
+      <div class="ccf-grid ccf-grid-2">
+        <mat-form-field appearance="outline">
+          <mat-label>Customer Code</mat-label>
+          <mat-icon matPrefix class="field-icon">badge</mat-icon>
+          <input matInput formControlName="customerCode" readonly placeholder="Auto-generated" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Customer Name</mat-label>
+          <mat-icon matPrefix class="field-icon">business</mat-icon>
+          <input matInput formControlName="customerName" required placeholder="Full business name" />
+          <mat-error *ngIf="form.get('customerName')?.invalid">Customer name is required</mat-error>
+        </mat-form-field>
+      </div>
+
+      <div class="ccf-grid ccf-grid-3">
+        <mat-form-field appearance="outline">
+          <mat-label>Contact Person</mat-label>
+          <mat-icon matPrefix class="field-icon">account_circle</mat-icon>
+          <input matInput formControlName="contactPerson" placeholder="Primary contact name" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Phone Number</mat-label>
+          <mat-icon matPrefix class="field-icon">phone</mat-icon>
+          <input matInput formControlName="phone" placeholder="e.g. 9876543210" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>WhatsApp Number</mat-label>
+          <mat-icon matPrefix class="field-icon">chat</mat-icon>
+          <input matInput formControlName="whatsappNumber" placeholder="e.g. 9876543210" />
+        </mat-form-field>
+      </div>
+
+      <mat-form-field appearance="outline" class="ccf-full-width">
+        <mat-label>Email Address</mat-label>
+        <mat-icon matPrefix class="field-icon">email</mat-icon>
+        <input matInput formControlName="email" placeholder="contact@company.com" />
+      </mat-form-field>
+    </mat-card>
+
+    <!-- Section 2: Address & Tax Details -->
+    <mat-card class="ccf-card ccf-mt-6">
+      <div class="ccf-section-head">
+        <div class="ccf-sec-icon ccf-icon-emerald"><mat-icon>location_on</mat-icon></div>
+        <div>
+          <h2 class="ccf-sec-title">Address & Tax Information</h2>
+          <p class="ccf-sec-sub">Billing location, pincode auto-fill, and GSTIN registration</p>
+        </div>
+      </div>
+
+      <mat-form-field appearance="outline" class="ccf-full-width">
+        <mat-label>Street Address</mat-label>
+        <mat-icon matPrefix class="field-icon">home</mat-icon>
+        <textarea matInput formControlName="address" rows="2" placeholder="Building, street, landmark..."></textarea>
+      </mat-form-field>
+
+      <div class="ccf-grid ccf-grid-3">
+        <mat-form-field appearance="outline">
+          <mat-label>Pincode</mat-label>
+          <mat-icon matPrefix class="field-icon">pin_drop</mat-icon>
+          <input matInput formControlName="pincode" maxlength="16" (input)="onPincodeInput()" placeholder="6-digit pincode" />
+          <span matSuffix *ngIf="pincodeLoading" class="ccf-spinner-wrap">
+            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+          </span>
+          <mat-error *ngIf="form.get('pincode')?.errors?.['invalidPincode']">Invalid pincode</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>State</mat-label>
+          <mat-icon matPrefix class="field-icon">map</mat-icon>
+          <input matInput formControlName="state" [readonly]="stateLocked" placeholder="State" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>City</mat-label>
+          <mat-icon matPrefix class="field-icon">location_city</mat-icon>
+          <input matInput formControlName="city" [readonly]="cityLocked" placeholder="City" />
+        </mat-form-field>
+      </div>
+
+      <div class="ccf-grid ccf-grid-2">
+        <ng-container *ngIf="pincodeAreaOptions.length > 1; else ccfCustAreaSingle">
+          <mat-form-field appearance="outline">
+            <mat-label>Area Name</mat-label>
+            <mat-icon matPrefix class="field-icon">explore</mat-icon>
+            <mat-select formControlName="areaName" (selectionChange)="onAreaSelected()">
+              <mat-option value="">Select area</mat-option>
+              <mat-option *ngFor="let a of pincodeAreaOptions" [value]="a">{{ a }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </ng-container>
+
+        <ng-template #ccfCustAreaSingle>
+          <mat-form-field appearance="outline">
+            <mat-label>Area Name</mat-label>
+            <mat-icon matPrefix class="field-icon">explore</mat-icon>
+            <input matInput formControlName="areaName" [readonly]="areaLocked" placeholder="Area" />
+          </mat-form-field>
+        </ng-template>
+
+        <mat-form-field appearance="outline">
+          <mat-label>GSTIN</mat-label>
+          <mat-icon matPrefix class="field-icon">receipt_long</mat-icon>
+          <input matInput formControlName="gstin" maxlength="15" placeholder="15-digit GSTIN" />
+        </mat-form-field>
+      </div>
+    </mat-card>
+
+    <!-- Section 3: AWB Registry Management -->
+    <mat-card class="ccf-card ccf-mt-6 ccf-awb-card">
+      <div class="ccf-section-head ccf-space-between">
+        <div class="ccf-title-with-badge">
+          <div class="ccf-sec-icon ccf-icon-purple"><mat-icon>qr_code_2</mat-icon></div>
+          <div>
+            <div class="ccf-flex-align">
+              <h2 class="ccf-sec-title">AWB Registry Inventory</h2>
+              <span class="ccf-badge-count" *ngIf="awbRows.length">{{ awbRows.length }} Loaded</span>
+            </div>
+            <p class="ccf-sec-sub">Manage unique tracking numbers reserved for this collection customer</p>
+          </div>
+        </div>
+
+        <div class="ccf-head-actions">
+          <button *ngIf="isEdit" mat-button type="button" class="ccf-btn-clear" color="warn" (click)="clearPendingAwbs()" [disabled]="saving || awbAddBusy">
+            <mat-icon>delete_sweep</mat-icon>
+            <span>Clear Pending AWBs</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="ccf-info-box">
+        <mat-icon class="ccf-info-icon">info</mat-icon>
+        <p>
+          Each AWB number is uniquely validated across the entire system. Use barcode scanner or bulk paste below.
+          {{ isEdit ? 'New AWBs save immediately upon addition.' : 'Queued AWBs register when saving this customer.' }}
+        </p>
+      </div>
+
+      <!-- Search & Add Actions Toolbar -->
+      <div class="ccf-awb-toolbar">
+        <div class="ccf-awb-search">
+          <mat-icon class="search-icon">search</mat-icon>
+          <input type="text" [(ngModel)]="awbSearch" [ngModelOptions]="{ standalone: true }" placeholder="Filter loaded AWBs..." />
+        </div>
+      </div>
+
+      <!-- Barcode Scan Field -->
+      <div class="ccf-scan-block">
+        <mat-form-field appearance="outline" class="ccf-full-width">
+          <mat-label>Barcode Scanner Input</mat-label>
+          <mat-icon matPrefix class="field-icon text-indigo">qr_code_scanner</mat-icon>
+          <input matInput [(ngModel)]="bulkScanLine" [ngModelOptions]="{ standalone: true }" (keydown.enter)="onBulkScanEnter($event)" autocomplete="off" [disabled]="awbAddBusy || saving" placeholder="Scan barcode & press Enter..." #bulkScanInput />
+          <mat-hint>Cursor auto-resets; values appended automatically with commas.</mat-hint>
+        </mat-form-field>
+      </div>
+
+      <!-- Bulk Paste Block -->
+      <div class="ccf-bulk-box">
+        <mat-form-field appearance="outline" class="ccf-bulk-textarea">
+          <mat-label>Add Multiple AWBs (Bulk Paste)</mat-label>
+          <textarea matInput [(ngModel)]="bulkAwbText" [ngModelOptions]="{ standalone: true }" rows="3" placeholder="Paste comma or newline-separated tracking numbers..." [disabled]="awbAddBusy || saving"></textarea>
+          <mat-hint>Trims whitespace, filters duplicates, and validates format.</mat-hint>
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="button" class="ccf-btn-bulk-add" (click)="addAwbsFromBulkTextarea()" [disabled]="awbAddBusy || saving">
+          <mat-icon *ngIf="!awbAddBusy">playlist_add</mat-icon>
+          <mat-spinner *ngIf="awbAddBusy" diameter="20"></mat-spinner>
+          <span>Batch Register AWBs</span>
+        </button>
+      </div>
+
+      <!-- Error / Conflict Warning Messages -->
+      <div class="ccf-alert-box" *ngIf="bulkDuplicateNote || bulkInvalidNote || bulkAlreadyNote || bulkConflictNote">
+        <mat-icon class="ccf-alert-icon">warning</mat-icon>
+        <div class="ccf-alert-content">
+          <p *ngIf="bulkDuplicateNote"><strong>Duplicates:</strong> {{ bulkDuplicateNote }}</p>
+          <p *ngIf="bulkInvalidNote"><strong>Invalid Format:</strong> {{ bulkInvalidNote }}</p>
+          <p *ngIf="bulkAlreadyNote"><strong>Already Assigned:</strong> {{ bulkAlreadyNote }}</p>
+          <p *ngIf="bulkConflictNote"><strong>System Conflicts:</strong> {{ bulkConflictNote }}</p>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="ccf-empty-awb" *ngIf="!filteredAwbRows.length">
+        <mat-icon class="ccf-empty-icon">inventory_2</mat-icon>
+        <p class="ccf-empty-title">No AWBs Registered Yet</p>
+        <p class="ccf-empty-sub">Use scanner or bulk paste field above to assign AWB tracking numbers.</p>
+      </div>
+
+      <!-- AWB Chips Grid -->
+      <div class="ccf-chip-grid" *ngIf="filteredAwbRows.length">
+        <div class="ccf-chip" *ngFor="let row of filteredAwbRows; trackBy: trackByAwb" [@chipEnter]>
+          <span class="ccf-chip-text">{{ row.awbNo }}</span>
+          <span class="ccf-chip-status" [class.status-used]="row.status === 'USED'">{{ row.status || 'PENDING' }}</span>
+          <button type="button" mat-icon-button class="ccf-chip-action" matTooltip="Copy AWB" (click)="copyAwb(row.awbNo)">
+            <mat-icon>content_copy</mat-icon>
+          </button>
+          <button type="button" mat-icon-button class="ccf-chip-action ccf-chip-del" matTooltip="Remove" [disabled]="row.status === 'USED' || awbAddBusy" (click)="removeAwbRow(row)">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- Single AWB Add Row -->
+      <div class="ccf-single-add-row">
+        <mat-form-field appearance="outline" class="ccf-single-add-field">
+          <mat-label>Single AWB Entry</mat-label>
+          <mat-icon matPrefix class="field-icon">add_circle_outline</mat-icon>
+          <input matInput #awbInputRef [(ngModel)]="newAwbInput" [ngModelOptions]="{ standalone: true }" (keydown.enter)="addAwb(); $event.preventDefault()" placeholder="Enter single tracking number..." autocomplete="off" />
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="button" class="ccf-btn-single-add" (click)="addAwb()" [disabled]="awbAddBusy || saving">
+          <mat-icon *ngIf="!awbAddBusy">add</mat-icon>
+          <mat-spinner *ngIf="awbAddBusy" diameter="20"></mat-spinner>
+          <span>Add AWB</span>
+        </button>
+      </div>
+
+      <p class="ccf-err-text" *ngIf="awbSectionError" role="alert">{{ awbSectionError }}</p>
+      <p class="ccf-err-text" *ngIf="awbFieldError" role="alert">{{ awbFieldError }}</p>
+    </mat-card>
+
+    <!-- Bottom Actions Toolbar -->
+    <div class="ccf-footer-actions">
+      <button mat-button type="button" class="ccf-btn-cancel" (click)="cancel()">Cancel</button>
+      <button mat-raised-button color="primary" type="submit" class="ccf-btn-submit" [disabled]="form.invalid || saving || awbAddBusy">
+        <mat-spinner *ngIf="saving" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!saving">check_circle</mat-icon>
+        <span>{{ isEdit ? 'Save Customer Changes' : 'Save Customer & AWBs' }}</span>
+      </button>
+    </div>
+  </form>
+</div>
+
