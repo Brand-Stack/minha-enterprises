@@ -1,0 +1,22 @@
+{
+  "device": {
+    "ip": "10.255.19.242",
+    "port": 443,
+    "useHttps": true,
+    "username": "admin",
+    "password": "minha123",
+    "deviceId": "DEV-2C59AE5A"
+  },
+  "cloud": {
+    "endpoints": [
+      "https://minhaenterprises.in/api/biometric-devices/punches",
+      "http://103.235.106.107:1104/api/biometric-devices/punches"
+    ],
+    "timeoutMs": 10000
+  },
+  "sync": {
+    "intervalSeconds": 10,
+    "batchSize": 30,
+    "checkpointFile": "./checkpoint.json"
+  }
+}

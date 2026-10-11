@@ -1,0 +1,15 @@
+{
+  "name": "biometric-gateway",
+  "version": "1.0.0",
+  "description": "Production-grade Local Biometric Gateway for Hikvision DS-K1T8005EFWX-B to Cloud Synchronization",
+  "main": "gateway.js",
+  "scripts": {
+    "start": "node gateway.js",
+    "test-device": "node gateway.js --test-device",
+    "test-cloud": "node gateway.js --test-cloud",
+    "sync-once": "node gateway.js --sync-once"
+  },
+  "dependencies": {},
+  "author": "Minha Enterprises",
+  "license": "ISC"
+}

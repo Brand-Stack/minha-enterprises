@@ -1,0 +1,86 @@
+export interface SmallClientEntryQuotation {
+    id?: string;
+    shopId?: string;
+    customerId: string;
+    customerName?: string;
+    title?: string;
+    month: string;
+    year: number;
+    zone?: string;
+    totalShipments?: number;
+    totalWeight?: number;
+    totalAmount?: number;
+    receivedAmount?: number;
+    pendingAmount?: number;
+    /** Format: 0001/2026-27 (running number / financial year). Editable. */
+    invoiceNumber?: string;
+    /** Invoice date; used to derive financial year for auto-increment. Editable. */
+    invoiceDate?: string;
+    /** Internal notes; UI only, not in invoice or breakup PDF/Excel. */
+    note?: string;
+    /** Small Client Entry Report: Pending | Paid | Partial */
+    amountStatus?: string;
+    /** Small Client Entry Report description */
+    description?: string;
+    /** True once monthly invoice PDF has been downloaded (report list). */
+    isDownloaded?: boolean;
+    /** Tracks if an invoice has been explicitly generated for this client entry. */
+    invoiceGenerated?: boolean;
+    /** Client-entry override for fuel %; blank uses courier quotation. */
+    fuelChargePercentage?: number | null;
+    /** Client-entry override for FOV %; blank uses courier quotation. */
+    fovCharges?: number | null;
+    /** Client-entry GST % override; blank uses company default then 0%. */
+    gstPercentage?: number | null;
+    includeFuel?: boolean;
+    includeGst?: boolean;
+    includeFov?: boolean;
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    lastUpdatedBy?: string;
+}
+
+export interface SmallClientEntry {
+    id?: string;
+    monthlyQuotationId: string;
+    entryDate: string;
+    consignor: string;
+    receiverName?: string;
+    receiverPhoneNo?: string;
+    pincode?: string;
+    areaName?: string;
+    state?: string;
+    destinationCity?: string;
+    fullAddress?: string;
+    consigneeAddress: string;
+    courierType: string;
+    weight: number;
+    trackingNumber: string;
+    itemType: string;
+    deliveryStatus?: string;
+    /** Payment / amount status (Cash, GPay, COD, custom). */
+    amountStatus?: string;
+    zone?: string;
+    /** Rate set for calculation: EXPRESS_RATE, SURFACE_RATE, SafetyPlus, PriorityClass */
+    rateType?: string;
+    rate?: number;
+    amount?: number;
+    /** True when amount was edited manually (skips auto recalculation on save). */
+    amountOverridden?: boolean;
+    /** Optional; added to shipment total for this entry. */
+    additionalCharges?: number;
+    /** Optional description for additional charges (e.g. Handling Charges). */
+    additionalChargesDescription?: string;
+    /** When false, line excluded from GST in invoice-style total; omit or true = apply. */
+    gstApplicable?: boolean;
+    /** When false, line excluded from fuel allocation; omit or true = apply. */
+    fuelApplicable?: boolean;
+    /** When false, line excluded from FOV allocation; omit or true = apply. */
+    fovApplicable?: boolean;
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    lastUpdatedBy?: string;
+}
+
