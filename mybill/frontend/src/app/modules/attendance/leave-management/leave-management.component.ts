@@ -46,8 +46,9 @@ import { AuthService } from '../../../core/services/auth.service';
             <mat-icon class="card-icon">beach_access</mat-icon>
           </div>
           <div class="balance-numbers">
-            <span class="remaining">{{ entitlement.casualLeaveTotal - entitlement.casualLeaveUsed }}</span>
+            <span class="remaining">{{ entitlement.casualLeaveAvailable !== undefined ? entitlement.casualLeaveAvailable : (entitlement.casualLeaveTotal - entitlement.casualLeaveUsed) }}</span>
             <span class="total">/ {{ entitlement.casualLeaveTotal }} days</span>
+            <span *ngIf="(entitlement.casualLeavePending || 0) > 0" style="font-size: 11px; color: #D97706; font-weight: 600; margin-left: 6px;">({{ entitlement.casualLeavePending }} pending)</span>
           </div>
           <div class="progress-bar">
             <div class="fill blue" [style.width.%]="(entitlement.casualLeaveUsed / (entitlement.casualLeaveTotal || 1)) * 100"></div>
@@ -60,8 +61,9 @@ import { AuthService } from '../../../core/services/auth.service';
             <mat-icon class="card-icon">local_hospital</mat-icon>
           </div>
           <div class="balance-numbers">
-            <span class="remaining">{{ entitlement.medicalLeaveTotal - entitlement.medicalLeaveUsed }}</span>
+            <span class="remaining">{{ entitlement.medicalLeaveAvailable !== undefined ? entitlement.medicalLeaveAvailable : (entitlement.medicalLeaveTotal - entitlement.medicalLeaveUsed) }}</span>
             <span class="total">/ {{ entitlement.medicalLeaveTotal }} days</span>
+            <span *ngIf="(entitlement.medicalLeavePending || 0) > 0" style="font-size: 11px; color: #D97706; font-weight: 600; margin-left: 6px;">({{ entitlement.medicalLeavePending }} pending)</span>
           </div>
           <div class="progress-bar">
             <div class="fill green" [style.width.%]="(entitlement.medicalLeaveUsed / (entitlement.medicalLeaveTotal || 1)) * 100"></div>
@@ -74,8 +76,9 @@ import { AuthService } from '../../../core/services/auth.service';
             <mat-icon class="card-icon">warning_amber</mat-icon>
           </div>
           <div class="balance-numbers">
-            <span class="remaining">{{ entitlement.emergencyLeaveTotal - entitlement.emergencyLeaveUsed }}</span>
+            <span class="remaining">{{ entitlement.emergencyLeaveAvailable !== undefined ? entitlement.emergencyLeaveAvailable : (entitlement.emergencyLeaveTotal - entitlement.emergencyLeaveUsed) }}</span>
             <span class="total">/ {{ entitlement.emergencyLeaveTotal }} days</span>
+            <span *ngIf="(entitlement.emergencyLeavePending || 0) > 0" style="font-size: 11px; color: #D97706; font-weight: 600; margin-left: 6px;">({{ entitlement.emergencyLeavePending }} pending)</span>
           </div>
           <div class="progress-bar">
             <div class="fill red" [style.width.%]="(entitlement.emergencyLeaveUsed / (entitlement.emergencyLeaveTotal || 1)) * 100"></div>
@@ -88,8 +91,9 @@ import { AuthService } from '../../../core/services/auth.service';
             <mat-icon class="card-icon">work_history</mat-icon>
           </div>
           <div class="balance-numbers">
-            <span class="remaining">{{ (entitlement.compOffTotal || 0) - (entitlement.compOffUsed || 0) }}</span>
+            <span class="remaining">{{ entitlement.compOffAvailable !== undefined ? entitlement.compOffAvailable : ((entitlement.compOffTotal || 0) - (entitlement.compOffUsed || 0)) }}</span>
             <span class="total">/ {{ entitlement.compOffTotal || 0 }} days</span>
+            <span *ngIf="(entitlement.compOffPending || 0) > 0" style="font-size: 11px; color: #D97706; font-weight: 600; margin-left: 6px;">({{ entitlement.compOffPending }} pending)</span>
           </div>
           <div class="progress-bar">
             <div class="fill purple" [style.width.%]="((entitlement.compOffUsed || 0) / (entitlement.compOffTotal || 1)) * 100"></div>
@@ -268,7 +272,7 @@ import { AuthService } from '../../../core/services/auth.service';
                 <option value="MEDICAL_LEAVE">Medical Leave</option>
                 <option value="EMERGENCY_LEAVE">Emergency Leave</option>
                 <option value="COMP_OFF">Comp Off</option>
-                <option value="OTHER_LEAVE">Other Leave</option>
+                <option value="LOP">Loss of Pay (LOP)</option>
               </select>
             </div>
 
@@ -346,7 +350,7 @@ import { AuthService } from '../../../core/services/auth.service';
                 <option value="MEDICAL_LEAVE">Medical Leave</option>
                 <option value="EMERGENCY_LEAVE">Emergency Leave</option>
                 <option value="COMP_OFF">Comp Off</option>
-                <option value="OTHER_LEAVE">Other Leave</option>
+                <option value="LOP">Loss of Pay (LOP)</option>
               </select>
             </div>
 
@@ -565,6 +569,7 @@ export class LeaveManagementComponent implements OnInit {
 
   formatType(type?: string): string {
     if (!type) return '';
+    if (type === 'LOP' || type === 'UNPAID_LOP') return 'Loss of Pay (LOP)';
     return type.replace('_', ' ');
   }
 

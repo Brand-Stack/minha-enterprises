@@ -50,6 +50,16 @@ public class LeaveEntitlement extends BaseEntity {
     @Builder.Default
     private Integer carryForwardDays = 0;
 
+    // Pending leave days (requests submitted & awaiting approval)
+    @Builder.Default
+    private Double casualLeavePending = 0.0;
+    @Builder.Default
+    private Double medicalLeavePending = 0.0;
+    @Builder.Default
+    private Double emergencyLeavePending = 0.0;
+    @Builder.Default
+    private Double compOffPending = 0.0;
+
     public int getCasualLeaveRemaining() {
         return Math.max(0, (casualLeaveTotal != null ? casualLeaveTotal : 0) - (casualLeaveUsed != null ? casualLeaveUsed : 0));
     }
@@ -68,5 +78,21 @@ public class LeaveEntitlement extends BaseEntity {
 
     public int getOtherLeaveRemaining() {
         return Math.max(0, (otherLeaveTotal != null ? otherLeaveTotal : 0) - (otherLeaveUsed != null ? otherLeaveUsed : 0));
+    }
+
+    public double getCasualLeaveAvailable() {
+        return Math.max(0.0, getCasualLeaveRemaining() - (casualLeavePending != null ? casualLeavePending : 0.0));
+    }
+
+    public double getMedicalLeaveAvailable() {
+        return Math.max(0.0, getMedicalLeaveRemaining() - (medicalLeavePending != null ? medicalLeavePending : 0.0));
+    }
+
+    public double getEmergencyLeaveAvailable() {
+        return Math.max(0.0, getEmergencyLeaveRemaining() - (emergencyLeavePending != null ? emergencyLeavePending : 0.0));
+    }
+
+    public double getCompOffAvailable() {
+        return Math.max(0.0, getCompOffRemaining() - (compOffPending != null ? compOffPending : 0.0));
     }
 }

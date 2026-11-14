@@ -5,6 +5,7 @@ import com.app.billing.dao.EmployeeRepository;
 import com.app.billing.dao.LeaveEntitlementRepository;
 import com.app.billing.dao.LeaveRequestRepository;
 import com.app.billing.dto.CompanySettingsDto;
+import com.app.billing.model.AttendanceRecord;
 import com.app.billing.model.Employee;
 import com.app.billing.model.LeaveEntitlement;
 import com.app.billing.model.LeaveRequest;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -150,6 +152,7 @@ class LeaveManagementServiceTest {
     void testApplyLeaveResolvesEmployeeByCode() {
         when(employeeRepository.findById("EMP001")).thenReturn(Optional.empty());
         when(employeeRepository.findByEmployeeCode("EMP001")).thenReturn(Optional.of(employee));
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
         when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         LeaveRequest request = LeaveRequest.builder()
@@ -296,5 +299,169 @@ class LeaveManagementServiceTest {
         // Entitlement used must now reflect 2 days (4 - 4 + 2 = 2), NOT 6 days
         assertEquals(2, entitlement.getCasualLeaveUsed());
         assertEquals(10, entitlement.getCasualLeaveRemaining());
+    }
+
+    @Test
+    void testOtherLeaveRejected() {
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
+
+        LeaveRequest request = LeaveRequest.builder()
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.OTHER_LEAVE)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 22))
+                .reason("Personal work")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> leaveService.applyLeave(request));
+        assertTrue(ex.getMessage().contains("Other Leave has been replaced by Loss of Pay (LOP)"));
+    }
+
+    @Test
+    void testApplyLopAllowedWhenPaidBalancesZero() {
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
+        when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LeaveRequest request = LeaveRequest.builder()
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.LOP)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 22))
+                .reason("Exhausted leaves, applying for LOP")
+                .build();
+
+        LeaveRequest result = leaveService.applyLeave(request);
+        assertNotNull(result);
+        assertEquals(LeaveRequest.LeaveType.LOP, result.getLeaveType());
+    }
+
+    @Test
+    void testLeaveBalanceValidationRejectsWhenExhausted() {
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
+
+        LeaveEntitlement entitlement = LeaveEntitlement.builder()
+                .employeeId("EMP123")
+                .year(2026)
+                .casualLeaveTotal(12)
+                .casualLeaveUsed(12) // 0 remaining
+                .medicalLeaveTotal(10)
+                .medicalLeaveUsed(0)
+                .emergencyLeaveTotal(5)
+                .emergencyLeaveUsed(0)
+                .compOffTotal(3)
+                .compOffUsed(0)
+                .build();
+        when(entitlementRepository.findByEmployeeIdAndYear("EMP123", 2026)).thenReturn(Optional.of(entitlement));
+
+        LeaveRequest request = LeaveRequest.builder()
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.CASUAL_LEAVE)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 22))
+                .reason("Casual leave")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> leaveService.applyLeave(request));
+        assertTrue(ex.getMessage().contains("exhausted") && ex.getMessage().contains("LOP"));
+    }
+
+    @Test
+    void testPartialLeaveBalanceValidationRequiresRemainingAsLop() {
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
+
+        LeaveEntitlement entitlement = LeaveEntitlement.builder()
+                .employeeId("EMP123")
+                .year(2026)
+                .casualLeaveTotal(12)
+                .casualLeaveUsed(11) // only 1 day available
+                .build();
+        when(entitlementRepository.findByEmployeeIdAndYear("EMP123", 2026)).thenReturn(Optional.of(entitlement));
+
+        // Applying for 3 days: Sept 21 (Mon), Sept 22 (Tue), Sept 23 (Wed)
+        LeaveRequest request = LeaveRequest.builder()
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.CASUAL_LEAVE)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 23))
+                .reason("Vacation")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> leaveService.applyLeave(request));
+        assertTrue(ex.getMessage().contains("Insufficient") && ex.getMessage().contains("LOP"));
+    }
+
+    @Test
+    void testPendingLeaveConsideredInValidation() {
+        when(employeeRepository.findById("EMP123")).thenReturn(Optional.of(employee));
+
+        LeaveEntitlement entitlement = LeaveEntitlement.builder()
+                .employeeId("EMP123")
+                .year(2026)
+                .casualLeaveTotal(12)
+                .casualLeaveUsed(10) // 2 days available
+                .build();
+        when(entitlementRepository.findByEmployeeIdAndYear("EMP123", 2026)).thenReturn(Optional.of(entitlement));
+
+        // An existing pending request for 2 days
+        LeaveRequest pendingReq = LeaveRequest.builder()
+                .id("PEND1")
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.CASUAL_LEAVE)
+                .numberOfDays(2.0)
+                .status(LeaveRequest.LeaveStatus.PENDING)
+                .fromDate(LocalDate.of(2026, 9, 14))
+                .toDate(LocalDate.of(2026, 9, 15))
+                .build();
+        when(leaveRequestRepository.findByEmployeeIdAndStatus("EMP123", LeaveRequest.LeaveStatus.PENDING))
+                .thenReturn(List.of(pendingReq));
+
+        // Applying for 1 more day
+        LeaveRequest newReq = LeaveRequest.builder()
+                .employeeId("EMP123")
+                .leaveType(LeaveRequest.LeaveType.CASUAL_LEAVE)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 21))
+                .reason("Additional day")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> leaveService.applyLeave(newReq));
+        assertTrue(ex.getMessage().contains("pending") || ex.getMessage().contains("exhausted"));
+    }
+
+    @Test
+    void testApproveLopUpdatesAttendanceAsLopAndDoesNotDeductEntitlement() {
+        LeaveRequest lopRequest = LeaveRequest.builder()
+                .id("LOP1")
+                .employeeId("EMP123")
+                .employeeCode("EMP001")
+                .employeeName("Jane Smith")
+                .leaveType(LeaveRequest.LeaveType.LOP)
+                .fromDate(LocalDate.of(2026, 9, 21))
+                .toDate(LocalDate.of(2026, 9, 21))
+                .numberOfDays(1.0)
+                .status(LeaveRequest.LeaveStatus.PENDING)
+                .build();
+
+        LeaveEntitlement entitlement = LeaveEntitlement.builder()
+                .employeeId("EMP123")
+                .year(2026)
+                .casualLeaveTotal(12)
+                .casualLeaveUsed(5)
+                .build();
+
+        when(leaveRequestRepository.findById("LOP1")).thenReturn(Optional.of(lopRequest));
+        when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(attendanceRecordRepository.findByEmployeeIdAndDate("EMP123", LocalDate.of(2026, 9, 21))).thenReturn(Optional.empty());
+        when(attendanceRecordRepository.save(any(AttendanceRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LeaveRequest approved = leaveService.approveOrRejectLeave("LOP1", true, "Approved LOP", "Admin");
+
+        assertEquals(LeaveRequest.LeaveStatus.APPROVED, approved.getStatus());
+        // Verify attendance record saved with isLop = true
+        verify(attendanceRecordRepository).save(argThat(ar ->
+                ar.getStatus() == AttendanceRecord.AttendanceStatus.LEAVE
+                        && Boolean.TRUE.equals(ar.getIsLop())
+                        && ar.getLeaveType() == LeaveRequest.LeaveType.LOP
+        ));
     }
 }

@@ -46,10 +46,11 @@ public class LeaveRequest extends BaseEntity {
         MEDICAL_LEAVE,
         EMERGENCY_LEAVE,
         COMP_OFF,
+        LOP,
+        UNPAID_LOP,
         OTHER_LEAVE,
         MATERNITY_LEAVE,
-        PATERNITY_LEAVE,
-        UNPAID_LOP
+        PATERNITY_LEAVE
     }
 
     public enum LeaveStatus {

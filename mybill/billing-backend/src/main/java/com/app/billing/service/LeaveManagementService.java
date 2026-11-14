@@ -53,38 +53,75 @@ public class LeaveManagementService {
         int emergency = (settings != null && settings.getEmergencyLeaveEntitlementPerYear() != null) ? settings.getEmergencyLeaveEntitlementPerYear() : 5;
         int compOff = (settings != null && settings.getCompOffEntitlementPerYear() != null) ? settings.getCompOffEntitlementPerYear() : 3;
 
+        LeaveEntitlement entitlement;
         if (entitlementOpt.isPresent()) {
-            LeaveEntitlement entitlement = entitlementOpt.get();
+            entitlement = entitlementOpt.get();
             entitlement.setCasualLeaveTotal(casual);
             entitlement.setMedicalLeaveTotal(medical);
             entitlement.setEmergencyLeaveTotal(emergency);
             entitlement.setCompOffTotal(compOff);
             LeaveEntitlement saved = entitlementRepository.save(entitlement);
-            return saved != null ? saved : entitlement;
+            entitlement = saved != null ? saved : entitlement;
+        } else {
+            Employee employee = employeeRepository.findById(employeeId)
+                    .or(() -> employeeRepository.findByEmployeeCode(employeeId))
+                    .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + employeeId));
+
+            LeaveEntitlement newEnt = LeaveEntitlement.builder()
+                    .employeeId(employee.getId())
+                    .employeeCode(employee.getEmployeeCode())
+                    .employeeName(employee.getEmployeeName())
+                    .year(currentYear)
+                    .casualLeaveTotal(casual)
+                    .casualLeaveUsed(0)
+                    .medicalLeaveTotal(medical)
+                    .medicalLeaveUsed(0)
+                    .emergencyLeaveTotal(emergency)
+                    .emergencyLeaveUsed(0)
+                    .compOffTotal(compOff)
+                    .compOffUsed(0)
+                    .otherLeaveTotal(0)
+                    .otherLeaveUsed(0)
+                    .build();
+
+            LeaveEntitlement saved = entitlementRepository.save(newEnt);
+            entitlement = saved != null ? saved : newEnt;
         }
 
-        Employee employee = employeeRepository.findById(employeeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + employeeId));
+        return enrichEntitlementWithPending(entitlement);
+    }
 
-        LeaveEntitlement entitlement = LeaveEntitlement.builder()
-                .employeeId(employee.getId())
-                .employeeCode(employee.getEmployeeCode())
-                .employeeName(employee.getEmployeeName())
-                .year(currentYear)
-                .casualLeaveTotal(casual)
-                .casualLeaveUsed(0)
-                .medicalLeaveTotal(medical)
-                .medicalLeaveUsed(0)
-                .emergencyLeaveTotal(emergency)
-                .emergencyLeaveUsed(0)
-                .compOffTotal(compOff)
-                .compOffUsed(0)
-                .otherLeaveTotal(0)
-                .otherLeaveUsed(0)
-                .build();
-
-        LeaveEntitlement saved = entitlementRepository.save(entitlement);
-        return saved != null ? saved : entitlement;
+    public LeaveEntitlement enrichEntitlementWithPending(LeaveEntitlement entitlement) {
+        if (entitlement == null || entitlement.getEmployeeId() == null) {
+            return entitlement;
+        }
+        int year = entitlement.getYear() != null && entitlement.getYear() > 0 ? entitlement.getYear() : LocalDate.now().getYear();
+        List<LeaveRequest> pendingList = leaveRequestRepository.findByEmployeeIdAndStatus(entitlement.getEmployeeId(), LeaveRequest.LeaveStatus.PENDING);
+        double clPending = 0.0;
+        double mlPending = 0.0;
+        double elPending = 0.0;
+        double coPending = 0.0;
+        if (pendingList != null) {
+            for (LeaveRequest req : pendingList) {
+                if (req.getFromDate() != null && req.getFromDate().getYear() == year) {
+                    double d = req.getNumberOfDays() != null ? req.getNumberOfDays() : 0.0;
+                    if (req.getLeaveType() == LeaveRequest.LeaveType.CASUAL_LEAVE) {
+                        clPending += d;
+                    } else if (req.getLeaveType() == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
+                        mlPending += d;
+                    } else if (req.getLeaveType() == LeaveRequest.LeaveType.EMERGENCY_LEAVE) {
+                        elPending += d;
+                    } else if (req.getLeaveType() == LeaveRequest.LeaveType.COMP_OFF) {
+                        coPending += d;
+                    }
+                }
+            }
+        }
+        entitlement.setCasualLeavePending(clPending);
+        entitlement.setMedicalLeavePending(mlPending);
+        entitlement.setEmergencyLeavePending(elPending);
+        entitlement.setCompOffPending(coPending);
+        return entitlement;
     }
 
     public List<LeaveEntitlement> getAllEntitlementsForYear(Integer year) {
@@ -213,12 +250,18 @@ public class LeaveManagementService {
         }
 
         double days = calculateLeaveDays(request.getFromDate(), request.getToDate(), request.getIsHalfDay());
+        if (days <= 0.0) {
+            throw new IllegalArgumentException("Selected date range contains no working days (all selected dates are weekly offs or holidays)");
+        }
 
         request.setEmployeeId(employee.getId());
         request.setEmployeeCode(employee.getEmployeeCode());
         request.setEmployeeName(employee.getEmployeeName());
         request.setDepartment(employee.getCategory());
         request.setNumberOfDays(days);
+
+        validateLeaveRequest(request, null);
+
         request.setStatus(LeaveRequest.LeaveStatus.PENDING);
         request.setAppliedDate(LocalDate.now());
 
@@ -247,6 +290,71 @@ public class LeaveManagementService {
         return saved;
     }
 
+    private void validateLeaveRequest(LeaveRequest request, String excludeRequestId) {
+        if (request.getLeaveType() == null) {
+            throw new IllegalArgumentException("Leave type is required for leave request");
+        }
+        if (request.getLeaveType() == LeaveRequest.LeaveType.OTHER_LEAVE) {
+            throw new IllegalArgumentException("Other Leave has been replaced by Loss of Pay (LOP). Please select Casual Leave, Medical Leave, Emergency Leave, Comp-Off, or Loss of Pay (LOP).");
+        }
+        if (request.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP) {
+            request.setLeaveType(LeaveRequest.LeaveType.LOP);
+        }
+
+        // LOP does not consume leave balance and is always permitted
+        if (request.getLeaveType() == LeaveRequest.LeaveType.LOP) {
+            return;
+        }
+
+        // Validate paid leave balance
+        if (request.getLeaveType() == LeaveRequest.LeaveType.CASUAL_LEAVE
+                || request.getLeaveType() == LeaveRequest.LeaveType.MEDICAL_LEAVE
+                || request.getLeaveType() == LeaveRequest.LeaveType.EMERGENCY_LEAVE
+                || request.getLeaveType() == LeaveRequest.LeaveType.COMP_OFF) {
+
+            int year = request.getFromDate() != null ? request.getFromDate().getYear() : LocalDate.now().getYear();
+            LeaveEntitlement entitlement = getOrCreateEntitlement(request.getEmployeeId(), year);
+
+            // Compute pending days for this specific employee and leave type in this year, excluding excludeRequestId if present
+            List<LeaveRequest> pendingRequests = leaveRequestRepository.findByEmployeeIdAndStatus(request.getEmployeeId(), LeaveRequest.LeaveStatus.PENDING);
+            double pendingDaysForType = 0.0;
+            if (pendingRequests != null) {
+                for (LeaveRequest p : pendingRequests) {
+                    if (excludeRequestId != null && excludeRequestId.equals(p.getId())) {
+                        continue;
+                    }
+                    if (p.getFromDate() != null && p.getFromDate().getYear() == year && p.getLeaveType() == request.getLeaveType()) {
+                        pendingDaysForType += (p.getNumberOfDays() != null ? p.getNumberOfDays() : 0.0);
+                    }
+                }
+            }
+
+            double remainingEntitlement = 0.0;
+            String typeName = request.getLeaveType().name().replace('_', ' ');
+
+            if (request.getLeaveType() == LeaveRequest.LeaveType.CASUAL_LEAVE) {
+                remainingEntitlement = entitlement.getCasualLeaveRemaining();
+            } else if (request.getLeaveType() == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
+                remainingEntitlement = entitlement.getMedicalLeaveRemaining();
+            } else if (request.getLeaveType() == LeaveRequest.LeaveType.EMERGENCY_LEAVE) {
+                remainingEntitlement = entitlement.getEmergencyLeaveRemaining();
+            } else if (request.getLeaveType() == LeaveRequest.LeaveType.COMP_OFF) {
+                remainingEntitlement = entitlement.getCompOffRemaining();
+            }
+
+            double availableBalance = Math.max(0.0, remainingEntitlement - pendingDaysForType);
+            double requestedDays = request.getNumberOfDays() != null ? request.getNumberOfDays() : 0.0;
+
+            if (availableBalance <= 0.0) {
+                throw new IllegalArgumentException("Available balance for " + typeName + " is 0. All available paid leaves for this type are exhausted. You can only apply under Loss of Pay (LOP).");
+            }
+
+            if (requestedDays > availableBalance) {
+                throw new IllegalArgumentException("Insufficient " + typeName + " balance. Requested: " + requestedDays + " day(s), but only " + availableBalance + " day(s) available. Please apply for up to " + availableBalance + " day(s) as " + typeName + " and submit the remaining days as LOP.");
+            }
+        }
+    }
+
     @Transactional
     public LeaveRequest approveOrRejectLeave(String requestId, boolean approve, String adminRemarks, String adminUsername) {
         LeaveRequest request = leaveRequestRepository.findById(requestId)
@@ -266,23 +374,25 @@ public class LeaveManagementService {
             double days = calculateLeaveDays(request.getFromDate(), request.getToDate(), request.getIsHalfDay());
             request.setNumberOfDays(days);
 
-            // Update entitlement balance
-            int year = request.getFromDate().getYear();
-            LeaveEntitlement entitlement = getOrCreateEntitlement(request.getEmployeeId(), year);
-            int numDays = (int) Math.ceil(days);
+            boolean isLop = (request.getLeaveType() == LeaveRequest.LeaveType.LOP || request.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP);
 
-            if (request.getLeaveType() == LeaveRequest.LeaveType.CASUAL_LEAVE) {
-                entitlement.setCasualLeaveUsed(entitlement.getCasualLeaveUsed() + numDays);
-            } else if (request.getLeaveType() == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
-                entitlement.setMedicalLeaveUsed(entitlement.getMedicalLeaveUsed() + numDays);
-            } else if (request.getLeaveType() == LeaveRequest.LeaveType.EMERGENCY_LEAVE) {
-                entitlement.setEmergencyLeaveUsed(entitlement.getEmergencyLeaveUsed() + numDays);
-            } else if (request.getLeaveType() == LeaveRequest.LeaveType.COMP_OFF) {
-                entitlement.setCompOffUsed((entitlement.getCompOffUsed() != null ? entitlement.getCompOffUsed() : 0) + numDays);
-            } else if (request.getLeaveType() == LeaveRequest.LeaveType.OTHER_LEAVE) {
-                entitlement.setOtherLeaveUsed(entitlement.getOtherLeaveUsed() + numDays);
+            // Update entitlement balance for paid leave only
+            if (!isLop) {
+                int year = request.getFromDate().getYear();
+                LeaveEntitlement entitlement = getOrCreateEntitlement(request.getEmployeeId(), year);
+                int numDays = (int) Math.ceil(days);
+
+                if (request.getLeaveType() == LeaveRequest.LeaveType.CASUAL_LEAVE) {
+                    entitlement.setCasualLeaveUsed(entitlement.getCasualLeaveUsed() + numDays);
+                } else if (request.getLeaveType() == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
+                    entitlement.setMedicalLeaveUsed(entitlement.getMedicalLeaveUsed() + numDays);
+                } else if (request.getLeaveType() == LeaveRequest.LeaveType.EMERGENCY_LEAVE) {
+                    entitlement.setEmergencyLeaveUsed(entitlement.getEmergencyLeaveUsed() + numDays);
+                } else if (request.getLeaveType() == LeaveRequest.LeaveType.COMP_OFF) {
+                    entitlement.setCompOffUsed((entitlement.getCompOffUsed() != null ? entitlement.getCompOffUsed() : 0) + numDays);
+                }
+                entitlementRepository.save(entitlement);
             }
-            entitlementRepository.save(entitlement);
 
             // Update Attendance records ONLY for eligible working days in leave date range
             CompanySettingsDto settings = companySettingsService != null ? companySettingsService.getSettings() : null;
@@ -307,7 +417,9 @@ public class LeaveManagementService {
                 } else {
                     record.setStatus(AttendanceRecord.AttendanceStatus.LEAVE);
                 }
-                record.setRemarks("On approved leave (" + request.getLeaveType() + ")");
+                record.setLeaveType(request.getLeaveType());
+                record.setIsLop(isLop);
+                record.setRemarks("On approved leave (" + (isLop ? "LOP" : request.getLeaveType()) + ")");
                 attendanceRecordRepository.save(record);
             }
 
@@ -438,26 +550,33 @@ public class LeaveManagementService {
             existing.setNumberOfDays(days);
         }
 
+        if (!wasApproved) {
+            validateLeaveRequest(existing, id);
+        }
+
         // If the leave was already approved, safely adjust entitlement deduction and attendance records
         if (wasApproved && oldFrom != null && oldTo != null && existing.getFromDate() != null && existing.getToDate() != null) {
-            // Revert old entitlement deduction
-            int oldYear = oldFrom.getYear();
-            int oldNumDays = (int) Math.ceil(oldDays);
-            Optional<LeaveEntitlement> entitlementOpt = entitlementRepository.findByEmployeeIdAndYear(existing.getEmployeeId(), oldYear);
-            if (entitlementOpt.isPresent()) {
-                LeaveEntitlement entitlement = entitlementOpt.get();
-                revertEntitlement(entitlement, oldType, oldNumDays);
-                // Apply new entitlement deduction
-                int newYear = existing.getFromDate().getYear();
-                if (newYear == oldYear) {
-                    applyEntitlement(entitlement, existing.getLeaveType(), (int) Math.ceil(existing.getNumberOfDays()));
+            boolean oldIsLop = (oldType == LeaveRequest.LeaveType.LOP || oldType == LeaveRequest.LeaveType.UNPAID_LOP);
+            boolean newIsLop = (existing.getLeaveType() == LeaveRequest.LeaveType.LOP || existing.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP);
+
+            // Revert old entitlement deduction if old was paid
+            if (!oldIsLop) {
+                int oldYear = oldFrom.getYear();
+                int oldNumDays = (int) Math.ceil(oldDays);
+                Optional<LeaveEntitlement> entitlementOpt = entitlementRepository.findByEmployeeIdAndYear(existing.getEmployeeId(), oldYear);
+                if (entitlementOpt.isPresent()) {
+                    LeaveEntitlement entitlement = entitlementOpt.get();
+                    revertEntitlement(entitlement, oldType, oldNumDays);
                     entitlementRepository.save(entitlement);
-                } else {
-                    entitlementRepository.save(entitlement);
-                    LeaveEntitlement newYearEnt = getOrCreateEntitlement(existing.getEmployeeId(), newYear);
-                    applyEntitlement(newYearEnt, existing.getLeaveType(), (int) Math.ceil(existing.getNumberOfDays()));
-                    entitlementRepository.save(newYearEnt);
                 }
+            }
+
+            // Apply new entitlement deduction if new is paid
+            if (!newIsLop) {
+                int newYear = existing.getFromDate().getYear();
+                LeaveEntitlement newYearEnt = getOrCreateEntitlement(existing.getEmployeeId(), newYear);
+                applyEntitlement(newYearEnt, existing.getLeaveType(), (int) Math.ceil(existing.getNumberOfDays()));
+                entitlementRepository.save(newYearEnt);
             }
 
             // Clean up old attendance records on old eligible dates
@@ -470,6 +589,8 @@ public class LeaveManagementService {
                         if (record.getCheckInTime() != null) {
                             record.setStatus(AttendanceRecord.AttendanceStatus.PRESENT);
                             record.setRemarks(null);
+                            record.setLeaveType(null);
+                            record.setIsLop(null);
                             attendanceRecordRepository.save(record);
                         } else {
                             attendanceRecordRepository.delete(record);
@@ -501,7 +622,9 @@ public class LeaveManagementService {
                 } else {
                     record.setStatus(AttendanceRecord.AttendanceStatus.LEAVE);
                 }
-                record.setRemarks("On approved leave (" + existing.getLeaveType() + ")");
+                record.setLeaveType(existing.getLeaveType());
+                record.setIsLop(newIsLop);
+                record.setRemarks("On approved leave (" + (newIsLop ? "LOP" : existing.getLeaveType()) + ")");
                 attendanceRecordRepository.save(record);
             }
         }
@@ -513,6 +636,9 @@ public class LeaveManagementService {
     }
 
     private void revertEntitlement(LeaveEntitlement entitlement, LeaveRequest.LeaveType type, int days) {
+        if (type == LeaveRequest.LeaveType.LOP || type == LeaveRequest.LeaveType.UNPAID_LOP) {
+            return;
+        }
         if (type == LeaveRequest.LeaveType.CASUAL_LEAVE) {
             entitlement.setCasualLeaveUsed(Math.max(0, entitlement.getCasualLeaveUsed() - days));
         } else if (type == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
@@ -528,6 +654,9 @@ public class LeaveManagementService {
     }
 
     private void applyEntitlement(LeaveEntitlement entitlement, LeaveRequest.LeaveType type, int days) {
+        if (type == LeaveRequest.LeaveType.LOP || type == LeaveRequest.LeaveType.UNPAID_LOP) {
+            return;
+        }
         if (type == LeaveRequest.LeaveType.CASUAL_LEAVE) {
             entitlement.setCasualLeaveUsed(entitlement.getCasualLeaveUsed() + days);
         } else if (type == LeaveRequest.LeaveType.MEDICAL_LEAVE) {
@@ -549,14 +678,17 @@ public class LeaveManagementService {
 
         // If the leave was approved, revert entitlements and attendance records
         if (existing.getStatus() == LeaveRequest.LeaveStatus.APPROVED && existing.getFromDate() != null) {
-            int year = existing.getFromDate().getYear();
-            int numDays = (int) Math.ceil(existing.getNumberOfDays());
+            boolean isLop = (existing.getLeaveType() == LeaveRequest.LeaveType.LOP || existing.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP);
+            if (!isLop) {
+                int year = existing.getFromDate().getYear();
+                int numDays = (int) Math.ceil(existing.getNumberOfDays());
 
-            Optional<LeaveEntitlement> entitlementOpt = entitlementRepository.findByEmployeeIdAndYear(existing.getEmployeeId(), year);
-            if (entitlementOpt.isPresent()) {
-                LeaveEntitlement entitlement = entitlementOpt.get();
-                revertEntitlement(entitlement, existing.getLeaveType(), numDays);
-                entitlementRepository.save(entitlement);
+                Optional<LeaveEntitlement> entitlementOpt = entitlementRepository.findByEmployeeIdAndYear(existing.getEmployeeId(), year);
+                if (entitlementOpt.isPresent()) {
+                    LeaveEntitlement entitlement = entitlementOpt.get();
+                    revertEntitlement(entitlement, existing.getLeaveType(), numDays);
+                    entitlementRepository.save(entitlement);
+                }
             }
 
             if (existing.getToDate() != null) {
@@ -569,6 +701,8 @@ public class LeaveManagementService {
                             if (record.getCheckInTime() != null) {
                                 record.setStatus(AttendanceRecord.AttendanceStatus.PRESENT);
                                 record.setRemarks(null);
+                                record.setLeaveType(null);
+                                record.setIsLop(null);
                                 attendanceRecordRepository.save(record);
                             } else {
                                 attendanceRecordRepository.delete(record);

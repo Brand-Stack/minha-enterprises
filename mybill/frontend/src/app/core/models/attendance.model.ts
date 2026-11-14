@@ -75,12 +75,20 @@ export interface LeaveEntitlement {
   year: number;
   casualLeaveTotal: number;
   casualLeaveUsed: number;
+  casualLeavePending?: number;
+  casualLeaveAvailable?: number;
   medicalLeaveTotal: number;
   medicalLeaveUsed: number;
+  medicalLeavePending?: number;
+  medicalLeaveAvailable?: number;
   emergencyLeaveTotal: number;
   emergencyLeaveUsed: number;
+  emergencyLeavePending?: number;
+  emergencyLeaveAvailable?: number;
   compOffTotal?: number;
   compOffUsed?: number;
+  compOffPending?: number;
+  compOffAvailable?: number;
   otherLeaveTotal: number;
   otherLeaveUsed: number;
   carryForwardDays?: number;
@@ -92,7 +100,7 @@ export interface LeaveRequest {
   employeeCode?: string;
   employeeName?: string;
   department?: string;
-  leaveType: 'CASUAL_LEAVE' | 'MEDICAL_LEAVE' | 'EMERGENCY_LEAVE' | 'COMP_OFF' | 'OTHER_LEAVE' | 'MATERNITY_LEAVE' | 'PATERNITY_LEAVE' | 'UNPAID_LOP';
+  leaveType: 'CASUAL_LEAVE' | 'MEDICAL_LEAVE' | 'EMERGENCY_LEAVE' | 'COMP_OFF' | 'LOP' | 'OTHER_LEAVE' | 'MATERNITY_LEAVE' | 'PATERNITY_LEAVE' | 'UNPAID_LOP';
   fromDate: string;
   toDate: string;
   numberOfDays?: number;
@@ -239,6 +247,8 @@ export interface PayrollRecord {
   totalAdvanceRecoveredSoFar?: number;
   generatedAt?: string;
   generatedBy?: string;
+  manualOverrides?: { [key: string]: boolean };
+  calculatedValues?: { [key: string]: number };
   auditLogs?: any[];
 }
 

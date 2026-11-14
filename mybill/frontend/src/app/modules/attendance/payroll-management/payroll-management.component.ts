@@ -886,28 +886,28 @@ import { ToastService } from '../../../shared/components/toast/toast.service';
             <span>This payroll is LOCKED by {{ activeRecord.lockedBy }} on {{ activeRecord.lockedAt | date:'medium' }}. Unlock to modify entries.</span>
           </div>
 
-          <!-- Base Earnings (Configured in Salary Management) -->
+          <!-- Base Earnings -->
           <div class="form-section">
             <div class="section-title">
               <span><mat-icon>payments</mat-icon> Base Salary & Earnings Breakdown</span>
-              <span class="days-chip" style="font-size: 11px;">Configured in Salary Management</span>
+              <span class="days-chip" style="font-size: 11px;">Editable Manual Overrides Supported</span>
             </div>
             <div class="form-grid-2">
               <div class="field-group">
-                <label>Basic Salary (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.basicSalary" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>Basic Salary (₹) <span *ngIf="activeRecord.manualOverrides?.['basicSalary']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.basicSalary" (ngModelChange)="markOverridden('basicSalary')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>HRA (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.hra" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>HRA (₹) <span *ngIf="activeRecord.manualOverrides?.['hra']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.hra" (ngModelChange)="markOverridden('hra')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Allowances (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.allowances" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>Allowances (₹) <span *ngIf="activeRecord.manualOverrides?.['allowances']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.allowances" (ngModelChange)="markOverridden('allowances')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Other Earnings (₹) [Monthly Adjustment]</label>
-                <input type="number" [(ngModel)]="activeRecord.otherEarnings" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Other Earnings (₹) [Monthly Adjustment] <span *ngIf="activeRecord.manualOverrides?.['otherEarnings']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.otherEarnings" (ngModelChange)="markOverridden('otherEarnings')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
             </div>
           </div>
@@ -923,12 +923,12 @@ import { ToastService } from '../../../shared/components/toast/toast.service';
             </div>
             <div class="form-grid-2 margin-top-sm">
               <div class="field-group">
-                <label>Loss of Pay Amount (₹) [* Based strictly on Basic Salary]</label>
-                <input type="number" [(ngModel)]="activeRecord.lopAmount" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Loss of Pay Amount (₹) [* Based strictly on Basic Salary] <span *ngIf="activeRecord.manualOverrides?.['lopAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.lopAmount" (ngModelChange)="markOverridden('lopAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Overtime Amount (₹) [{{ activeRecord.overtimeHours || 0 }} hrs]</label>
-                <input type="number" [(ngModel)]="activeRecord.overtimeAmount" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Overtime Amount (₹) [{{ activeRecord.overtimeHours || 0 }} hrs] <span *ngIf="activeRecord.manualOverrides?.['overtimeAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.overtimeAmount" (ngModelChange)="markOverridden('overtimeAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
             </div>
           </div>
@@ -970,38 +970,38 @@ import { ToastService } from '../../../shared/components/toast/toast.service';
 
             <div class="form-grid-2">
               <div class="field-group">
-                <label>Monthly Bonus (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.bonusAmount" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Monthly Bonus (₹) <span *ngIf="activeRecord.manualOverrides?.['bonusAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.bonusAmount" (ngModelChange)="markOverridden('bonusAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Yearly Bonus (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.yearlyBonusAmount" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Yearly Bonus (₹) <span *ngIf="activeRecord.manualOverrides?.['yearlyBonusAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.yearlyBonusAmount" (ngModelChange)="markOverridden('yearlyBonusAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
             </div>
           </div>
 
-          <!-- Deductions (Configured in Salary Management) -->
+          <!-- Deductions -->
           <div class="form-section">
             <div class="section-title">
               <span><mat-icon>remove_circle_outline</mat-icon> Statutory Deductions</span>
-              <span class="days-chip" style="font-size: 11px;">Configured in Salary Management</span>
+              <span class="days-chip" style="font-size: 11px;">Editable Manual Overrides Supported</span>
             </div>
             <div class="form-grid-2">
               <div class="field-group">
-                <label>Provident Fund / PF (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.pfAmount" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>Provident Fund / PF (₹) <span *ngIf="activeRecord.manualOverrides?.['pfAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.pfAmount" (ngModelChange)="markOverridden('pfAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Professional Tax (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.professionalTax" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>Professional Tax (₹) <span *ngIf="activeRecord.manualOverrides?.['professionalTax']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.professionalTax" (ngModelChange)="markOverridden('professionalTax')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Income Tax (₹)</label>
-                <input type="number" [(ngModel)]="activeRecord.taxAmount" disabled class="drawer-input" style="background: #F1F5F9;">
+                <label>Income Tax (₹) <span *ngIf="activeRecord.manualOverrides?.['taxAmount']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.taxAmount" (ngModelChange)="markOverridden('taxAmount')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
               <div class="field-group">
-                <label>Other Deductions (₹) [Monthly Adjustment]</label>
-                <input type="number" [(ngModel)]="activeRecord.otherDeductions" (ngModelChange)="recalculateTotals()" [disabled]="!!activeRecord.isLocked" class="drawer-input">
+                <label>Other Deductions (₹) [Monthly Adjustment] <span *ngIf="activeRecord.manualOverrides?.['otherDeductions']" style="font-size: 10px; color: #D97706; font-weight: 600;">(Manual)</span></label>
+                <input type="number" [(ngModel)]="activeRecord.otherDeductions" (ngModelChange)="markOverridden('otherDeductions')" [disabled]="!!activeRecord.isLocked" class="drawer-input">
               </div>
             </div>
           </div>
@@ -1962,10 +1962,14 @@ export class PayrollManagementComponent implements OnInit {
   // --- DRAWER ACTIONS ---
   openDrawer(record: PayrollRecord): void {
     this.activeRecord = { ...record };
+    if (!this.activeRecord.manualOverrides) {
+      this.activeRecord.manualOverrides = record.manualOverrides ? { ...record.manualOverrides } : {};
+    }
     this.showDrawer = true;
     this.advanceValidationError = '';
 
-    if (!record.isLocked && record.employeeId) {
+    // Only load baseline defaults if payslip record does not yet have base salary populated
+    if (!record.isLocked && record.employeeId && (record.basicSalary === undefined || record.basicSalary === null)) {
       this.attendanceService.getSalaryStructure(record.employeeId).subscribe({
         next: (struct) => {
           if (struct && this.activeRecord) {
@@ -1985,6 +1989,15 @@ export class PayrollManagementComponent implements OnInit {
       next: (acc) => this.activeAdvanceAccount = acc,
       error: () => this.activeAdvanceAccount = null
     });
+  }
+
+  markOverridden(field: string): void {
+    if (!this.activeRecord) return;
+    if (!this.activeRecord.manualOverrides) {
+      this.activeRecord.manualOverrides = {};
+    }
+    this.activeRecord.manualOverrides[field] = true;
+    this.recalculateTotals();
   }
 
   closeDrawer(): void {

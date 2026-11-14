@@ -17,6 +17,12 @@ import com.app.billing.model.EmployeeAdvanceAccount;
 import com.app.billing.model.EmployeeBonus;
 import com.app.billing.model.PayrollRecord;
 import com.app.billing.model.SalaryStructure;
+import com.app.billing.dao.HolidayRepository;
+import com.app.billing.dao.LeaveRequestRepository;
+import com.app.billing.model.Holiday;
+import com.app.billing.model.LeaveRequest;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,6 +56,8 @@ public class PayrollCalculationService {
     private final CompanySettingsService companySettingsService;
     private final AuditService auditService;
     private final NotificationService notificationService;
+    private final HolidayRepository holidayRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
 
     // --- SALARY STRUCTURE ---
     public SalaryStructure saveSalaryStructure(SalaryStructure structure) {
@@ -71,12 +79,21 @@ public class PayrollCalculationService {
             List<PayrollRecord> records = payrollRepository.findByEmployeeIdOrderByPayrollMonthDesc(saved.getEmployeeId());
             for (PayrollRecord pr : records) {
                 if (!Boolean.TRUE.equals(pr.getIsLocked())) {
-                    pr.setBasicSalary(saved.getBasicSalary() != null ? saved.getBasicSalary() : BigDecimal.ZERO);
-                    pr.setHra(saved.getHra() != null ? saved.getHra() : BigDecimal.ZERO);
-                    pr.setAllowances(saved.getAllowances() != null ? saved.getAllowances() : BigDecimal.ZERO);
-                    pr.setPfAmount(saved.getPfDeduction() != null ? saved.getPfDeduction() : BigDecimal.ZERO);
-                    pr.setProfessionalTax(saved.getProfessionalTax() != null ? saved.getProfessionalTax() : BigDecimal.ZERO);
-                    pr.setTaxAmount(saved.getIncomeTax() != null ? saved.getIncomeTax() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("basicSalary")) pr.setBasicSalary(saved.getBasicSalary() != null ? saved.getBasicSalary() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("hra")) pr.setHra(saved.getHra() != null ? saved.getHra() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("allowances")) pr.setAllowances(saved.getAllowances() != null ? saved.getAllowances() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("pfAmount")) pr.setPfAmount(saved.getPfDeduction() != null ? saved.getPfDeduction() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("professionalTax")) pr.setProfessionalTax(saved.getProfessionalTax() != null ? saved.getProfessionalTax() : BigDecimal.ZERO);
+                    if (!pr.isFieldOverridden("taxAmount")) pr.setTaxAmount(saved.getIncomeTax() != null ? saved.getIncomeTax() : BigDecimal.ZERO);
+
+                    if (pr.getCalculatedValues() != null) {
+                        pr.getCalculatedValues().put("basicSalary", saved.getBasicSalary() != null ? saved.getBasicSalary() : BigDecimal.ZERO);
+                        pr.getCalculatedValues().put("hra", saved.getHra() != null ? saved.getHra() : BigDecimal.ZERO);
+                        pr.getCalculatedValues().put("allowances", saved.getAllowances() != null ? saved.getAllowances() : BigDecimal.ZERO);
+                        pr.getCalculatedValues().put("pfAmount", saved.getPfDeduction() != null ? saved.getPfDeduction() : BigDecimal.ZERO);
+                        pr.getCalculatedValues().put("professionalTax", saved.getProfessionalTax() != null ? saved.getProfessionalTax() : BigDecimal.ZERO);
+                        pr.getCalculatedValues().put("taxAmount", saved.getIncomeTax() != null ? saved.getIncomeTax() : BigDecimal.ZERO);
+                    }
 
                     BigDecimal gross = pr.getBasicSalary().add(pr.getHra()).add(pr.getAllowances())
                             .add(pr.getOvertimeAmount() != null ? pr.getOvertimeAmount() : BigDecimal.ZERO)
@@ -433,65 +450,21 @@ public class PayrollCalculationService {
         return processPayrollForEmployee(employeeId, payrollMonth, null, adminUsername);
     }
 
-    @Transactional
-    public PayrollRecord processPayrollForEmployee(String employeeId, String payrollMonth, BigDecimal customAdvanceDeduction, String adminUsername) {
-        Employee employee = employeeRepository.findById(employeeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + employeeId));
+    @Data
+    @Builder
+    public static class AttendanceStats {
+        private int totalDaysInMonth;
+        private int workingDaysInMonth;
+        private int presentDays;
+        private int leaveDays;
+        private double lopDays;
+        private double totalOvertimeHours;
+    }
 
-        YearMonth ym = YearMonth.parse(payrollMonth);
+    public AttendanceStats calculateAttendanceStats(String employeeId, YearMonth ym, CompanySettingsDto settings) {
         LocalDate startDate = ym.atDay(1);
         LocalDate endDate = ym.atEndOfMonth();
         int totalDaysInMonth = ym.lengthOfMonth();
-
-        CompanySettingsDto settings = companySettingsService.getSettings();
-        SalaryStructure structure = getSalaryStructure(employeeId);
-
-        // Fetch attendance records
-        List<AttendanceRecord> attendanceRecords = attendanceRecordRepository.findByEmployeeIdAndDateBetweenOrderByDateAsc(employeeId, startDate, endDate);
-
-        int presentDays = 0;
-        int leaveDays = 0;
-        double lopDays = 0.0;
-        double totalOvertimeHours = 0.0;
-
-        for (AttendanceRecord ar : attendanceRecords) {
-            if (ar.getStatus() == AttendanceRecord.AttendanceStatus.PRESENT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.EARLY_CHECKOUT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE_AND_EARLY_CHECKOUT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.PERMISSION
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.WORK_FROM_HOME
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.OVERTIME) {
-                presentDays++;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.HALF_DAY) {
-                presentDays++;
-                lopDays += 0.5;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.LEAVE) {
-                leaveDays++;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.ABSENT) {
-                lopDays += 1.0;
-            }
-
-            if (ar.getOvertimeHours() != null && ar.getOvertimeHours() > 0) {
-                totalOvertimeHours += ar.getOvertimeHours();
-            }
-        }
-
-        // Account for absent unrecorded days
-        int recordedDaysCount = attendanceRecords.size();
-        if (recordedDaysCount < totalDaysInMonth) {
-            for (int day = 1; day <= totalDaysInMonth; day++) {
-                LocalDate d = ym.atDay(day);
-                boolean recorded = attendanceRecords.stream().anyMatch(ar -> ar.getDate().equals(d));
-                if (!recorded) {
-                    String dayName = d.getDayOfWeek().name();
-                    boolean isWeekend = settings.getWeekendDays() != null && settings.getWeekendDays().contains(dayName);
-                    if (!isWeekend) {
-                        lopDays += 1.0;
-                    }
-                }
-            }
-        }
 
         int sundayCount = 0;
         for (int day = 1; day <= totalDaysInMonth; day++) {
@@ -501,22 +474,172 @@ public class PayrollCalculationService {
         }
         int workingDaysInMonth = Math.max(1, totalDaysInMonth - sundayCount);
 
-        // LOP Amount: Calculated strictly on Basic Salary / Working Days * LOP Days
-        BigDecimal basicSalaryStructure = structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO;
-        BigDecimal dailyRate = basicSalaryStructure.divide(BigDecimal.valueOf(workingDaysInMonth), 2, RoundingMode.HALF_UP);
+        List<AttendanceRecord> attendanceRecords = attendanceRecordRepository.findByEmployeeIdAndDateBetweenOrderByDateAsc(employeeId, startDate, endDate);
+        List<LeaveRequest> approvedLeaves = leaveRequestRepository != null
+                ? leaveRequestRepository.findByEmployeeIdAndStatus(employeeId, LeaveRequest.LeaveStatus.APPROVED)
+                    .stream()
+                    .filter(l -> l.getFromDate() != null && l.getToDate() != null
+                            && !l.getFromDate().isAfter(endDate) && !l.getToDate().isBefore(startDate))
+                    .toList()
+                : List.of();
+
+        List<Holiday> holidays = holidayRepository != null
+                ? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate)
+                : List.of();
+        java.util.Set<LocalDate> holidayDates = holidays.stream()
+                .filter(h -> h.getActive() == null || Boolean.TRUE.equals(h.getActive()))
+                .map(Holiday::getHolidayDate)
+                .collect(java.util.stream.Collectors.toSet());
+
+        java.util.Set<String> weekendDays = resolveWeekendDays(settings);
+
+        Map<LocalDate, AttendanceRecord> recordMap = new HashMap<>();
+        if (attendanceRecords != null) {
+            for (AttendanceRecord ar : attendanceRecords) {
+                if (ar.getDate() != null) {
+                    recordMap.put(ar.getDate(), ar);
+                }
+            }
+        }
+
+        int presentDays = 0;
+        int leaveDays = 0;
+        double lopDays = 0.0;
+        double totalOvertimeHours = 0.0;
+
+        for (int day = 1; day <= totalDaysInMonth; day++) {
+            LocalDate d = ym.atDay(day);
+            String dayName = d.getDayOfWeek().name();
+            boolean isWeekend = weekendDays.contains(dayName);
+            boolean isHoliday = holidayDates.contains(d);
+
+            AttendanceRecord ar = recordMap.get(d);
+            if (ar != null && ar.getOvertimeHours() != null && ar.getOvertimeHours() > 0) {
+                totalOvertimeHours += ar.getOvertimeHours();
+            }
+
+            if (isHoliday || isWeekend) {
+                continue; // Non-working day
+            }
+
+            if (ar != null) {
+                if (ar.getStatus() == AttendanceRecord.AttendanceStatus.PRESENT
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.EARLY_CHECKOUT
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE_AND_EARLY_CHECKOUT
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.PERMISSION
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.WORK_FROM_HOME
+                        || ar.getStatus() == AttendanceRecord.AttendanceStatus.OVERTIME) {
+                    presentDays++;
+                } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.HALF_DAY) {
+                    presentDays++;
+                    lopDays += 0.5;
+                } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.ABSENT) {
+                    lopDays += 1.0;
+                } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.LEAVE) {
+                    boolean isLop = Boolean.TRUE.equals(ar.getIsLop())
+                            || ar.getLeaveType() == LeaveRequest.LeaveType.LOP
+                            || ar.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP
+                            || (ar.getRemarks() != null && (ar.getRemarks().contains("LOP") || ar.getRemarks().contains("UNPAID_LOP")));
+                    if (isLop) {
+                        lopDays += 1.0;
+                    } else {
+                        leaveDays++;
+                    }
+                }
+            } else {
+                // Unrecorded working day: check if covered by approved leave
+                Optional<LeaveRequest> matchingLeave = approvedLeaves.stream()
+                        .filter(l -> !d.isBefore(l.getFromDate()) && !d.isAfter(l.getToDate()))
+                        .findFirst();
+
+                if (matchingLeave.isPresent()) {
+                    LeaveRequest l = matchingLeave.get();
+                    boolean isLop = (l.getLeaveType() == LeaveRequest.LeaveType.LOP || l.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP);
+                    if (Boolean.TRUE.equals(l.getIsHalfDay())) {
+                        if (isLop) {
+                            lopDays += 0.5;
+                        } else {
+                            leaveDays++;
+                        }
+                    } else {
+                        if (isLop) {
+                            lopDays += 1.0;
+                        } else {
+                            leaveDays++;
+                        }
+                    }
+                } else {
+                    lopDays += 1.0;
+                }
+            }
+        }
+
+        return AttendanceStats.builder()
+                .totalDaysInMonth(totalDaysInMonth)
+                .workingDaysInMonth(workingDaysInMonth)
+                .presentDays(presentDays)
+                .leaveDays(leaveDays)
+                .lopDays(lopDays)
+                .totalOvertimeHours(totalOvertimeHours)
+                .build();
+    }
+
+    private java.util.Set<String> resolveWeekendDays(CompanySettingsDto settings) {
+        java.util.Set<String> weekendDays = new java.util.HashSet<>();
+        if (settings != null && settings.getWeekendDays() != null && !settings.getWeekendDays().isEmpty()) {
+            settings.getWeekendDays().forEach(d -> {
+                if (d != null && !d.isBlank()) weekendDays.add(d.trim().toUpperCase());
+            });
+        } else if (settings != null && settings.getWorkingDays() != null && !settings.getWorkingDays().isEmpty()) {
+            java.util.Set<String> workingDays = settings.getWorkingDays().stream()
+                    .filter(d -> d != null && !d.isBlank())
+                    .map(d -> d.trim().toUpperCase())
+                    .collect(java.util.stream.Collectors.toSet());
+            for (java.time.DayOfWeek dow : java.time.DayOfWeek.values()) {
+                if (!workingDays.contains(dow.name())) {
+                    weekendDays.add(dow.name());
+                }
+            }
+        } else {
+            weekendDays.add("SUNDAY");
+        }
+        return weekendDays;
+    }
+
+    @Transactional
+    public PayrollRecord processPayrollForEmployee(String employeeId, String payrollMonth, BigDecimal customAdvanceDeduction, String adminUsername) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + employeeId));
+
+        YearMonth ym = YearMonth.parse(payrollMonth);
+        CompanySettingsDto settings = companySettingsService != null ? companySettingsService.getSettings() : null;
+        SalaryStructure structure = getSalaryStructure(employeeId);
+
+        AttendanceStats stats = calculateAttendanceStats(employeeId, ym, settings);
+        int totalDaysInMonth = stats.getTotalDaysInMonth();
+        int workingDaysInMonth = stats.getWorkingDaysInMonth();
+        int presentDays = stats.getPresentDays();
+        int leaveDays = stats.getLeaveDays();
+        double lopDays = stats.getLopDays();
+        double totalOvertimeHours = stats.getTotalOvertimeHours();
+
+        // System Computed baseline values from structure and attendance
+        BigDecimal computedBasic = (structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal computedHra = (structure.getHra() != null ? structure.getHra() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal computedAllowances = (structure.getAllowances() != null ? structure.getAllowances() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal dailyRate = computedBasic.divide(BigDecimal.valueOf(workingDaysInMonth), 2, RoundingMode.HALF_UP);
         BigDecimal computedLopAmount = dailyRate.multiply(BigDecimal.valueOf(lopDays)).setScale(2, RoundingMode.HALF_UP);
 
-        // Overtime Amount
-        double otMultiplier = settings.getOvertimeHourlyRateMultiplier() != null ? settings.getOvertimeHourlyRateMultiplier() : 1.5;
-        double expectedHoursPerDay = settings.getWorkingHoursPerDay() != null ? settings.getWorkingHoursPerDay() : 8.0;
+        double otMultiplier = (settings != null && settings.getOvertimeHourlyRateMultiplier() != null) ? settings.getOvertimeHourlyRateMultiplier() : 1.5;
+        double expectedHoursPerDay = (settings != null && settings.getWorkingHoursPerDay() != null) ? settings.getWorkingHoursPerDay() : 8.0;
         BigDecimal hourlyRate = dailyRate.divide(BigDecimal.valueOf(expectedHoursPerDay), 2, RoundingMode.HALF_UP);
         BigDecimal computedOvertimeAmount = hourlyRate.multiply(BigDecimal.valueOf(totalOvertimeHours * otMultiplier)).setScale(2, RoundingMode.HALF_UP);
 
-        // Bonuses
-        List<EmployeeBonus> monthBonuses = bonusRepository.findByEmployeeIdAndPayrollMonth(employeeId, payrollMonth);
+        List<EmployeeBonus> monthBonuses = bonusRepository != null ? bonusRepository.findByEmployeeIdAndPayrollMonth(employeeId, payrollMonth) : List.of();
         BigDecimal computedBonus = BigDecimal.ZERO;
         BigDecimal computedYearlyBonus = BigDecimal.ZERO;
-
         for (EmployeeBonus bonus : monthBonuses) {
             if (bonus.getBonusType() == EmployeeBonus.BonusType.YEARLY_BONUS) {
                 computedYearlyBonus = computedYearlyBonus.add(bonus.getAmount());
@@ -524,6 +647,10 @@ public class PayrollCalculationService {
                 computedBonus = computedBonus.add(bonus.getAmount());
             }
         }
+
+        BigDecimal computedPf = (structure.getPfDeduction() != null ? structure.getPfDeduction() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal computedProfTax = (structure.getProfessionalTax() != null ? structure.getProfessionalTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal computedIncomeTax = (structure.getIncomeTax() != null ? structure.getIncomeTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
         String payslipNo = "PAY-" + payrollMonth.replace("-", "") + "-" + (employee.getEmployeeCode() != null ? employee.getEmployeeCode() : employee.getId());
 
@@ -567,28 +694,64 @@ public class PayrollCalculationService {
                     .build();
         }
 
-        // Base Salary configuration from Salary Management (structure)
-        BigDecimal basicSalary = (structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal hra = (structure.getHra() != null ? structure.getHra() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal allowances = (structure.getAllowances() != null ? structure.getAllowances() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        // Populate calculated values snapshot
+        Map<String, BigDecimal> calculatedValues = new HashMap<>();
+        calculatedValues.put("basicSalary", computedBasic);
+        calculatedValues.put("hra", computedHra);
+        calculatedValues.put("allowances", computedAllowances);
+        calculatedValues.put("overtimeAmount", computedOvertimeAmount);
+        calculatedValues.put("bonusAmount", computedBonus);
+        calculatedValues.put("yearlyBonusAmount", computedYearlyBonus);
+        calculatedValues.put("otherEarnings", BigDecimal.ZERO.setScale(2));
+        calculatedValues.put("pfAmount", computedPf);
+        calculatedValues.put("professionalTax", computedProfTax);
+        calculatedValues.put("taxAmount", computedIncomeTax);
+        calculatedValues.put("lopAmount", computedLopAmount);
+        calculatedValues.put("otherDeductions", BigDecimal.ZERO.setScale(2));
+        calculatedValues.put("lopDays", BigDecimal.valueOf(lopDays).setScale(2, RoundingMode.HALF_UP));
+        calculatedValues.put("totalWorkingDays", BigDecimal.valueOf(workingDaysInMonth));
+        calculatedValues.put("presentDays", BigDecimal.valueOf(presentDays));
+        calculatedValues.put("leaveDays", BigDecimal.valueOf(leaveDays));
+        calculatedValues.put("overtimeHours", BigDecimal.valueOf(totalOvertimeHours).setScale(2, RoundingMode.HALF_UP));
 
-        BigDecimal rawOtherEarnings = (existingRecordOpt.isPresent() && existingRecordOpt.get().getOtherEarnings() != null)
+        // Preserve manual overrides if already present on this payslip
+        Map<String, Boolean> existingOverrides = (existingRecordOpt.isPresent() && existingRecordOpt.get().getManualOverrides() != null)
+                ? new HashMap<>(existingRecordOpt.get().getManualOverrides())
+                : new HashMap<>();
+
+        // Resolve fields: if overridden, keep manual value; else use calculated value
+        BigDecimal basicSalary = existingOverrides.getOrDefault("basicSalary", false) && existingRecordOpt.get().getBasicSalary() != null
+                ? existingRecordOpt.get().getBasicSalary() : computedBasic;
+
+        BigDecimal hra = existingOverrides.getOrDefault("hra", false) && existingRecordOpt.get().getHra() != null
+                ? existingRecordOpt.get().getHra() : computedHra;
+
+        BigDecimal allowances = existingOverrides.getOrDefault("allowances", false) && existingRecordOpt.get().getAllowances() != null
+                ? existingRecordOpt.get().getAllowances() : computedAllowances;
+
+        BigDecimal rawOtherEarnings = existingOverrides.getOrDefault("otherEarnings", false) && existingRecordOpt.get().getOtherEarnings() != null
                 ? existingRecordOpt.get().getOtherEarnings()
-                : (priorRecord != null && priorRecord.getOtherEarnings() != null
-                    ? priorRecord.getOtherEarnings() : BigDecimal.ZERO);
+                : (existingRecordOpt.isPresent() && existingRecordOpt.get().getOtherEarnings() != null
+                    ? existingRecordOpt.get().getOtherEarnings()
+                    : (priorRecord != null && priorRecord.getOtherEarnings() != null ? priorRecord.getOtherEarnings() : BigDecimal.ZERO));
         BigDecimal otherEarnings = rawOtherEarnings != null ? rawOtherEarnings.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO.setScale(2);
 
-        // LOP calculation based on Basic Salary ONLY
+        // LOP calculation based on resolved Basic Salary
         BigDecimal dailyRateResolved = basicSalary.divide(BigDecimal.valueOf(workingDaysInMonth), 2, RoundingMode.HALF_UP);
         BigDecimal computedLopAmountResolved = dailyRateResolved.multiply(BigDecimal.valueOf(lopDays)).setScale(2, RoundingMode.HALF_UP);
+        calculatedValues.put("lopAmount", computedLopAmountResolved);
+
         BigDecimal hourlyRateResolved = dailyRateResolved.divide(BigDecimal.valueOf(expectedHoursPerDay), 2, RoundingMode.HALF_UP);
         BigDecimal computedOvertimeAmountResolved = hourlyRateResolved.multiply(BigDecimal.valueOf(totalOvertimeHours * otMultiplier)).setScale(2, RoundingMode.HALF_UP);
+        calculatedValues.put("overtimeAmount", computedOvertimeAmountResolved);
 
         BigDecimal overtimeAmount;
-        if (existingRecordOpt.isPresent() && existingRecordOpt.get().getOvertimeAmount() != null) {
+        if (existingOverrides.getOrDefault("overtimeAmount", false) && existingRecordOpt.get().getOvertimeAmount() != null) {
             overtimeAmount = existingRecordOpt.get().getOvertimeAmount();
         } else if (computedOvertimeAmountResolved.compareTo(BigDecimal.ZERO) > 0) {
             overtimeAmount = computedOvertimeAmountResolved;
+        } else if (existingRecordOpt.isPresent() && existingRecordOpt.get().getOvertimeAmount() != null) {
+            overtimeAmount = existingRecordOpt.get().getOvertimeAmount();
         } else if (priorRecord != null && priorRecord.getOvertimeAmount() != null) {
             overtimeAmount = priorRecord.getOvertimeAmount();
         } else {
@@ -596,10 +759,12 @@ public class PayrollCalculationService {
         }
 
         BigDecimal totalBonus;
-        if (existingRecordOpt.isPresent() && existingRecordOpt.get().getBonusAmount() != null && existingRecordOpt.get().getBonusAmount().compareTo(BigDecimal.ZERO) > 0) {
+        if (existingOverrides.getOrDefault("bonusAmount", false) && existingRecordOpt.get().getBonusAmount() != null) {
             totalBonus = existingRecordOpt.get().getBonusAmount();
         } else if (computedBonus.compareTo(BigDecimal.ZERO) > 0) {
             totalBonus = computedBonus;
+        } else if (existingRecordOpt.isPresent() && existingRecordOpt.get().getBonusAmount() != null && existingRecordOpt.get().getBonusAmount().compareTo(BigDecimal.ZERO) > 0) {
+            totalBonus = existingRecordOpt.get().getBonusAmount();
         } else if (priorRecord != null && priorRecord.getBonusAmount() != null) {
             totalBonus = priorRecord.getBonusAmount();
         } else {
@@ -607,35 +772,45 @@ public class PayrollCalculationService {
         }
 
         BigDecimal totalYearlyBonus;
-        if (existingRecordOpt.isPresent() && existingRecordOpt.get().getYearlyBonusAmount() != null && existingRecordOpt.get().getYearlyBonusAmount().compareTo(BigDecimal.ZERO) > 0) {
+        if (existingOverrides.getOrDefault("yearlyBonusAmount", false) && existingRecordOpt.get().getYearlyBonusAmount() != null) {
             totalYearlyBonus = existingRecordOpt.get().getYearlyBonusAmount();
         } else if (computedYearlyBonus.compareTo(BigDecimal.ZERO) > 0) {
             totalYearlyBonus = computedYearlyBonus;
+        } else if (existingRecordOpt.isPresent() && existingRecordOpt.get().getYearlyBonusAmount() != null && existingRecordOpt.get().getYearlyBonusAmount().compareTo(BigDecimal.ZERO) > 0) {
+            totalYearlyBonus = existingRecordOpt.get().getYearlyBonusAmount();
         } else if (priorRecord != null && priorRecord.getYearlyBonusAmount() != null) {
             totalYearlyBonus = priorRecord.getYearlyBonusAmount();
         } else {
             totalYearlyBonus = BigDecimal.ZERO;
         }
 
-        BigDecimal pfAmount = (structure.getPfDeduction() != null ? structure.getPfDeduction() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal profTax = (structure.getProfessionalTax() != null ? structure.getProfessionalTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal incomeTax = (structure.getIncomeTax() != null ? structure.getIncomeTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal pfAmount = existingOverrides.getOrDefault("pfAmount", false) && existingRecordOpt.get().getPfAmount() != null
+                ? existingRecordOpt.get().getPfAmount() : computedPf;
+
+        BigDecimal profTax = existingOverrides.getOrDefault("professionalTax", false) && existingRecordOpt.get().getProfessionalTax() != null
+                ? existingRecordOpt.get().getProfessionalTax() : computedProfTax;
+
+        BigDecimal incomeTax = existingOverrides.getOrDefault("taxAmount", false) && existingRecordOpt.get().getTaxAmount() != null
+                ? existingRecordOpt.get().getTaxAmount() : computedIncomeTax;
 
         BigDecimal lopAmount;
-        if (existingRecordOpt.isPresent() && existingRecordOpt.get().getLopAmount() != null) {
+        if (existingOverrides.getOrDefault("lopAmount", false) && existingRecordOpt.get().getLopAmount() != null) {
             lopAmount = existingRecordOpt.get().getLopAmount();
         } else if (computedLopAmountResolved.compareTo(BigDecimal.ZERO) > 0) {
             lopAmount = computedLopAmountResolved;
+        } else if (existingRecordOpt.isPresent() && existingRecordOpt.get().getLopAmount() != null) {
+            lopAmount = existingRecordOpt.get().getLopAmount();
         } else if (priorRecord != null && priorRecord.getLopAmount() != null) {
             lopAmount = priorRecord.getLopAmount();
         } else {
             lopAmount = BigDecimal.ZERO;
         }
 
-        BigDecimal otherDeductions = (existingRecordOpt.isPresent() && existingRecordOpt.get().getOtherDeductions() != null)
+        BigDecimal otherDeductions = existingOverrides.getOrDefault("otherDeductions", false) && existingRecordOpt.get().getOtherDeductions() != null
                 ? existingRecordOpt.get().getOtherDeductions()
-                : (priorRecord != null && priorRecord.getOtherDeductions() != null
-                    ? priorRecord.getOtherDeductions() : BigDecimal.ZERO);
+                : (existingRecordOpt.isPresent() && existingRecordOpt.get().getOtherDeductions() != null
+                    ? existingRecordOpt.get().getOtherDeductions()
+                    : (priorRecord != null && priorRecord.getOtherDeductions() != null ? priorRecord.getOtherDeductions() : BigDecimal.ZERO));
 
         // Get current advance account balance (after reversing prior transactions for this month if re-processing)
         EmployeeAdvanceAccount advanceAccount = recalculateAdvanceAccountLedger(employeeId);
@@ -644,7 +819,9 @@ public class PayrollCalculationService {
 
         // Advance deduction calculation & validation
         BigDecimal advanceDeduction = BigDecimal.ZERO;
-        if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+        if (existingOverrides.getOrDefault("advanceDeductionAmount", false) && existingRecordOpt.get().getAdvanceDeductionAmount() != null) {
+            advanceDeduction = existingRecordOpt.get().getAdvanceDeductionAmount();
+        } else if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
             advanceDeduction = BigDecimal.ZERO;
         } else if (customAdvanceDeduction != null) {
             if (customAdvanceDeduction.compareTo(BigDecimal.ZERO) < 0) {
@@ -661,6 +838,7 @@ public class PayrollCalculationService {
             BigDecimal availableNet = preliminaryEarnings.subtract(preliminaryDeductions).max(BigDecimal.ZERO);
             advanceDeduction = outstandingBalance.min(availableNet);
         }
+        calculatedValues.put("advanceDeductionAmount", advanceDeduction);
 
         // Calculate Totals based on authoritative component values
         BigDecimal totalEarnings = basicSalary.add(hra).add(allowances).add(overtimeAmount).add(totalBonus).add(totalYearlyBonus).add(otherEarnings);
@@ -691,6 +869,9 @@ public class PayrollCalculationService {
             advanceAccount = recalculateAdvanceAccountLedger(employeeId);
         }
 
+        record.setManualOverrides(existingOverrides);
+        record.setCalculatedValues(calculatedValues);
+
         record.setAdvanceId(advanceAccount.getId());
         record.setOriginalAdvanceAmount(advanceAccount.getTotalAdvanceGiven());
         record.setPreviousAdvanceBalance(previousBalance);
@@ -703,11 +884,11 @@ public class PayrollCalculationService {
         record.setDepartment(employee.getCategory());
         record.setDesignation(employee.getDesignation());
         record.setJoiningDate(employee.getDateOfJoining());
-        record.setTotalWorkingDays(workingDaysInMonth);
-        record.setPresentDays(presentDays);
-        record.setLeaveDays(leaveDays);
-        record.setLopDays(lopDays);
-        record.setOvertimeHours(totalOvertimeHours);
+        record.setTotalWorkingDays(existingOverrides.getOrDefault("totalWorkingDays", false) && existingRecordOpt.get().getTotalWorkingDays() != null ? existingRecordOpt.get().getTotalWorkingDays() : workingDaysInMonth);
+        record.setPresentDays(existingOverrides.getOrDefault("presentDays", false) && existingRecordOpt.get().getPresentDays() != null ? existingRecordOpt.get().getPresentDays() : presentDays);
+        record.setLeaveDays(existingOverrides.getOrDefault("leaveDays", false) && existingRecordOpt.get().getLeaveDays() != null ? existingRecordOpt.get().getLeaveDays() : leaveDays);
+        record.setLopDays(existingOverrides.getOrDefault("lopDays", false) && existingRecordOpt.get().getLopDays() != null ? existingRecordOpt.get().getLopDays() : lopDays);
+        record.setOvertimeHours(existingOverrides.getOrDefault("overtimeHours", false) && existingRecordOpt.get().getOvertimeHours() != null ? existingRecordOpt.get().getOvertimeHours() : totalOvertimeHours);
         record.setBasicSalary(basicSalary);
         record.setHra(hra);
         record.setAllowances(allowances);
@@ -784,6 +965,10 @@ public class PayrollCalculationService {
         Employee employee = employeeRepository.findById(draft.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + draft.getEmployeeId()));
 
+        YearMonth ym = YearMonth.parse(draft.getPayrollMonth());
+        CompanySettingsDto settings = companySettingsService != null ? companySettingsService.getSettings() : null;
+        SalaryStructure structure = getSalaryStructure(draft.getEmployeeId());
+
         Optional<PayrollRecord> existingOpt = payrollRepository.findByEmployeeIdAndPayrollMonth(draft.getEmployeeId(), draft.getPayrollMonth());
         PayrollRecord record;
         if (existingOpt.isPresent()) {
@@ -807,27 +992,154 @@ public class PayrollCalculationService {
                     .build();
         }
 
-        // Merge updated fields from draft onto record
-        if (draft.getBasicSalary() != null) record.setBasicSalary(draft.getBasicSalary());
-        if (draft.getHra() != null) record.setHra(draft.getHra());
-        if (draft.getAllowances() != null) record.setAllowances(draft.getAllowances());
-        if (draft.getOtherEarnings() != null) record.setOtherEarnings(draft.getOtherEarnings());
-        if (draft.getOvertimeAmount() != null) record.setOvertimeAmount(draft.getOvertimeAmount());
-        if (draft.getBonusAmount() != null) record.setBonusAmount(draft.getBonusAmount());
-        if (draft.getYearlyBonusAmount() != null) record.setYearlyBonusAmount(draft.getYearlyBonusAmount());
+        // Initialize or update baseline calculated values
+        Map<String, BigDecimal> calculatedValues = record.getCalculatedValues() != null ? new HashMap<>(record.getCalculatedValues()) : new HashMap<>();
+        if (calculatedValues.isEmpty()) {
+            AttendanceStats stats = calculateAttendanceStats(draft.getEmployeeId(), ym, settings);
+            BigDecimal computedBasic = (structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal computedHra = (structure.getHra() != null ? structure.getHra() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal computedAllowances = (structure.getAllowances() != null ? structure.getAllowances() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal dailyRate = computedBasic.divide(BigDecimal.valueOf(stats.getWorkingDaysInMonth()), 2, RoundingMode.HALF_UP);
+            BigDecimal computedLop = dailyRate.multiply(BigDecimal.valueOf(stats.getLopDays())).setScale(2, RoundingMode.HALF_UP);
 
-        if (draft.getPfAmount() != null) record.setPfAmount(draft.getPfAmount());
-        if (draft.getProfessionalTax() != null) record.setProfessionalTax(draft.getProfessionalTax());
-        if (draft.getTaxAmount() != null) record.setTaxAmount(draft.getTaxAmount());
-        if (draft.getLopAmount() != null) record.setLopAmount(draft.getLopAmount());
-        if (draft.getAdvanceDeductionAmount() != null) record.setAdvanceDeductionAmount(draft.getAdvanceDeductionAmount());
-        if (draft.getOtherDeductions() != null) record.setOtherDeductions(draft.getOtherDeductions());
+            double otMultiplier = (settings != null && settings.getOvertimeHourlyRateMultiplier() != null) ? settings.getOvertimeHourlyRateMultiplier() : 1.5;
+            double expectedHoursPerDay = (settings != null && settings.getWorkingHoursPerDay() != null) ? settings.getWorkingHoursPerDay() : 8.0;
+            BigDecimal hourlyRate = dailyRate.divide(BigDecimal.valueOf(expectedHoursPerDay), 2, RoundingMode.HALF_UP);
+            BigDecimal computedOvertimeAmount = hourlyRate.multiply(BigDecimal.valueOf(stats.getTotalOvertimeHours() * otMultiplier)).setScale(2, RoundingMode.HALF_UP);
 
-        if (draft.getTotalWorkingDays() != null) record.setTotalWorkingDays(draft.getTotalWorkingDays());
-        if (draft.getPresentDays() != null) record.setPresentDays(draft.getPresentDays());
-        if (draft.getLeaveDays() != null) record.setLeaveDays(draft.getLeaveDays());
-        if (draft.getLopDays() != null) record.setLopDays(draft.getLopDays());
-        if (draft.getOvertimeHours() != null) record.setOvertimeHours(draft.getOvertimeHours());
+            List<EmployeeBonus> monthBonuses = bonusRepository != null ? bonusRepository.findByEmployeeIdAndPayrollMonth(draft.getEmployeeId(), draft.getPayrollMonth()) : List.of();
+            BigDecimal computedBonus = BigDecimal.ZERO;
+            BigDecimal computedYearlyBonus = BigDecimal.ZERO;
+            for (EmployeeBonus bonus : monthBonuses) {
+                if (bonus.getBonusType() == EmployeeBonus.BonusType.YEARLY_BONUS) {
+                    computedYearlyBonus = computedYearlyBonus.add(bonus.getAmount());
+                } else {
+                    computedBonus = computedBonus.add(bonus.getAmount());
+                }
+            }
+
+            calculatedValues.put("basicSalary", computedBasic);
+            calculatedValues.put("hra", computedHra);
+            calculatedValues.put("allowances", computedAllowances);
+            calculatedValues.put("overtimeAmount", computedOvertimeAmount);
+            calculatedValues.put("bonusAmount", computedBonus);
+            calculatedValues.put("yearlyBonusAmount", computedYearlyBonus);
+            calculatedValues.put("otherEarnings", BigDecimal.ZERO.setScale(2));
+            calculatedValues.put("pfAmount", (structure.getPfDeduction() != null ? structure.getPfDeduction() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            calculatedValues.put("professionalTax", (structure.getProfessionalTax() != null ? structure.getProfessionalTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            calculatedValues.put("taxAmount", (structure.getIncomeTax() != null ? structure.getIncomeTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            calculatedValues.put("lopAmount", computedLop);
+            calculatedValues.put("otherDeductions", BigDecimal.ZERO.setScale(2));
+            calculatedValues.put("lopDays", BigDecimal.valueOf(stats.getLopDays()).setScale(2, RoundingMode.HALF_UP));
+            calculatedValues.put("totalWorkingDays", BigDecimal.valueOf(stats.getWorkingDaysInMonth()));
+            calculatedValues.put("presentDays", BigDecimal.valueOf(stats.getPresentDays()));
+            calculatedValues.put("leaveDays", BigDecimal.valueOf(stats.getLeaveDays()));
+            calculatedValues.put("overtimeHours", BigDecimal.valueOf(stats.getTotalOvertimeHours()).setScale(2, RoundingMode.HALF_UP));
+        }
+
+        // Manage manual overrides
+        Map<String, Boolean> overrides = record.getManualOverrides() != null ? new HashMap<>(record.getManualOverrides()) : new HashMap<>();
+        if (draft.getManualOverrides() != null) {
+            overrides.putAll(draft.getManualOverrides());
+        }
+
+        List<String> modifiedFields = new ArrayList<>();
+
+        // Helper to check and mark override
+        java.util.function.BiConsumer<String, Object> checkOverride = (fieldName, draftVal) -> {
+            if (draftVal != null) {
+                if (draft.getManualOverrides() != null && draft.getManualOverrides().containsKey(fieldName)) {
+                    overrides.put(fieldName, draft.getManualOverrides().get(fieldName));
+                } else {
+                    BigDecimal calcVal = calculatedValues.get(fieldName);
+                    if (calcVal != null && draftVal instanceof BigDecimal bd) {
+                        if (bd.compareTo(calcVal) != 0) {
+                            overrides.put(fieldName, true);
+                            modifiedFields.add(fieldName + " (" + calcVal + " -> " + bd + ")");
+                        }
+                    } else {
+                        overrides.put(fieldName, true);
+                        modifiedFields.add(fieldName + " (" + draftVal + ")");
+                    }
+                }
+            }
+        };
+
+        // Merge updated fields from draft onto record and record overrides
+        if (draft.getBasicSalary() != null) {
+            checkOverride.accept("basicSalary", draft.getBasicSalary());
+            record.setBasicSalary(draft.getBasicSalary());
+        }
+        if (draft.getHra() != null) {
+            checkOverride.accept("hra", draft.getHra());
+            record.setHra(draft.getHra());
+        }
+        if (draft.getAllowances() != null) {
+            checkOverride.accept("allowances", draft.getAllowances());
+            record.setAllowances(draft.getAllowances());
+        }
+        if (draft.getOtherEarnings() != null) {
+            checkOverride.accept("otherEarnings", draft.getOtherEarnings());
+            record.setOtherEarnings(draft.getOtherEarnings());
+        }
+        if (draft.getOvertimeAmount() != null) {
+            checkOverride.accept("overtimeAmount", draft.getOvertimeAmount());
+            record.setOvertimeAmount(draft.getOvertimeAmount());
+        }
+        if (draft.getBonusAmount() != null) {
+            checkOverride.accept("bonusAmount", draft.getBonusAmount());
+            record.setBonusAmount(draft.getBonusAmount());
+        }
+        if (draft.getYearlyBonusAmount() != null) {
+            checkOverride.accept("yearlyBonusAmount", draft.getYearlyBonusAmount());
+            record.setYearlyBonusAmount(draft.getYearlyBonusAmount());
+        }
+
+        if (draft.getPfAmount() != null) {
+            checkOverride.accept("pfAmount", draft.getPfAmount());
+            record.setPfAmount(draft.getPfAmount());
+        }
+        if (draft.getProfessionalTax() != null) {
+            checkOverride.accept("professionalTax", draft.getProfessionalTax());
+            record.setProfessionalTax(draft.getProfessionalTax());
+        }
+        if (draft.getTaxAmount() != null) {
+            checkOverride.accept("taxAmount", draft.getTaxAmount());
+            record.setTaxAmount(draft.getTaxAmount());
+        }
+        if (draft.getLopAmount() != null) {
+            checkOverride.accept("lopAmount", draft.getLopAmount());
+            record.setLopAmount(draft.getLopAmount());
+        }
+        if (draft.getAdvanceDeductionAmount() != null) {
+            checkOverride.accept("advanceDeductionAmount", draft.getAdvanceDeductionAmount());
+            record.setAdvanceDeductionAmount(draft.getAdvanceDeductionAmount());
+        }
+        if (draft.getOtherDeductions() != null) {
+            checkOverride.accept("otherDeductions", draft.getOtherDeductions());
+            record.setOtherDeductions(draft.getOtherDeductions());
+        }
+
+        if (draft.getTotalWorkingDays() != null) {
+            checkOverride.accept("totalWorkingDays", draft.getTotalWorkingDays());
+            record.setTotalWorkingDays(draft.getTotalWorkingDays());
+        }
+        if (draft.getPresentDays() != null) {
+            checkOverride.accept("presentDays", draft.getPresentDays());
+            record.setPresentDays(draft.getPresentDays());
+        }
+        if (draft.getLeaveDays() != null) {
+            checkOverride.accept("leaveDays", draft.getLeaveDays());
+            record.setLeaveDays(draft.getLeaveDays());
+        }
+        if (draft.getLopDays() != null) {
+            checkOverride.accept("lopDays", draft.getLopDays());
+            record.setLopDays(draft.getLopDays());
+        }
+        if (draft.getOvertimeHours() != null) {
+            checkOverride.accept("overtimeHours", draft.getOvertimeHours());
+            record.setOvertimeHours(draft.getOvertimeHours());
+        }
 
         if (record.getBasicSalary() != null && record.getBasicSalary().compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("Basic salary cannot be negative");
         if (record.getBonusAmount() != null && record.getBonusAmount().compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("Bonus amount cannot be negative");
@@ -863,6 +1175,9 @@ public class PayrollCalculationService {
             advanceTransactionRepository.save(deductionTx);
             advanceAccount = recalculateAdvanceAccountLedger(draft.getEmployeeId());
         }
+
+        record.setManualOverrides(overrides);
+        record.setCalculatedValues(calculatedValues);
 
         record.setAdvanceId(advanceAccount.getId());
         record.setOriginalAdvanceAmount(advanceAccount.getTotalAdvanceGiven());
@@ -903,11 +1218,15 @@ public class PayrollCalculationService {
         if (record.getAuditLogs() == null) {
             record.setAuditLogs(new ArrayList<>());
         }
+        String remarks = "Saved draft payroll for " + record.getPayrollMonth();
+        if (!modifiedFields.isEmpty()) {
+            remarks += " with manual overrides: " + String.join(", ", modifiedFields);
+        }
         record.getAuditLogs().add(PayrollRecord.PayrollAuditEntry.builder()
                 .timestamp(LocalDateTime.now())
                 .action("SAVE_DRAFT")
                 .modifiedBy(adminUsername)
-                .remarks("Saved draft payroll for " + record.getPayrollMonth())
+                .remarks(remarks)
                 .build());
 
         return payrollRepository.save(record);
@@ -1028,72 +1347,30 @@ public class PayrollCalculationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found with ID: " + employeeId));
 
         YearMonth ym = YearMonth.parse(payrollMonth);
-        LocalDate startDate = ym.atDay(1);
-        LocalDate endDate = ym.atEndOfMonth();
-        int totalDaysInMonth = ym.lengthOfMonth();
-
-        CompanySettingsDto settings = companySettingsService.getSettings();
+        CompanySettingsDto settings = companySettingsService != null ? companySettingsService.getSettings() : null;
         SalaryStructure structure = getSalaryStructure(employeeId);
 
-        List<AttendanceRecord> attendanceRecords = attendanceRecordRepository.findByEmployeeIdAndDateBetweenOrderByDateAsc(employeeId, startDate, endDate);
+        AttendanceStats stats = calculateAttendanceStats(employeeId, ym, settings);
+        int totalDaysInMonth = stats.getTotalDaysInMonth();
+        int workingDaysInMonth = stats.getWorkingDaysInMonth();
+        int presentDays = stats.getPresentDays();
+        int leaveDays = stats.getLeaveDays();
+        double lopDays = stats.getLopDays();
+        double totalOvertimeHours = stats.getTotalOvertimeHours();
 
-        int presentDays = 0;
-        int leaveDays = 0;
-        double lopDays = 0.0;
-        double totalOvertimeHours = 0.0;
+        BigDecimal basicSalary = (structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal hra = (structure.getHra() != null ? structure.getHra() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal allowances = (structure.getAllowances() != null ? structure.getAllowances() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
-        for (AttendanceRecord ar : attendanceRecords) {
-            if (ar.getStatus() == AttendanceRecord.AttendanceStatus.PRESENT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.EARLY_CHECKOUT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.LATE_AND_EARLY_CHECKOUT
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.PERMISSION
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.WORK_FROM_HOME
-                    || ar.getStatus() == AttendanceRecord.AttendanceStatus.OVERTIME) {
-                presentDays++;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.HALF_DAY) {
-                presentDays++;
-                lopDays += 0.5;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.LEAVE) {
-                leaveDays++;
-            } else if (ar.getStatus() == AttendanceRecord.AttendanceStatus.ABSENT) {
-                lopDays += 1.0;
-            }
+        BigDecimal dailyRate = basicSalary.divide(BigDecimal.valueOf(workingDaysInMonth), 2, RoundingMode.HALF_UP);
+        BigDecimal computedLopAmount = dailyRate.multiply(BigDecimal.valueOf(lopDays)).setScale(2, RoundingMode.HALF_UP);
 
-            if (ar.getOvertimeHours() != null && ar.getOvertimeHours() > 0) {
-                totalOvertimeHours += ar.getOvertimeHours();
-            }
-        }
+        double otMultiplier = (settings != null && settings.getOvertimeHourlyRateMultiplier() != null) ? settings.getOvertimeHourlyRateMultiplier() : 1.5;
+        double expectedHoursPerDay = (settings != null && settings.getWorkingHoursPerDay() != null) ? settings.getWorkingHoursPerDay() : 8.0;
+        BigDecimal hourlyRate = dailyRate.divide(BigDecimal.valueOf(expectedHoursPerDay), 2, RoundingMode.HALF_UP);
+        BigDecimal computedOvertimeAmount = hourlyRate.multiply(BigDecimal.valueOf(totalOvertimeHours * otMultiplier)).setScale(2, RoundingMode.HALF_UP);
 
-        int recordedDaysCount = attendanceRecords.size();
-        if (recordedDaysCount < totalDaysInMonth) {
-            for (int day = 1; day <= totalDaysInMonth; day++) {
-                LocalDate d = ym.atDay(day);
-                boolean recorded = attendanceRecords.stream().anyMatch(ar -> ar.getDate().equals(d));
-                if (!recorded) {
-                    String dayName = d.getDayOfWeek().name();
-                    boolean isWeekend = settings.getWeekendDays() != null && settings.getWeekendDays().contains(dayName);
-                    if (!isWeekend) {
-                        lopDays += 1.0;
-                    }
-                }
-            }
-        }
-
-        int sundayCount = 0;
-        for (int day = 1; day <= totalDaysInMonth; day++) {
-            if (ym.atDay(day).getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
-                sundayCount++;
-            }
-        }
-        int workingDaysInMonth = Math.max(1, totalDaysInMonth - sundayCount);
-
-        BigDecimal basicSalaryStructure = structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO;
-
-        double otMultiplier = settings.getOvertimeHourlyRateMultiplier() != null ? settings.getOvertimeHourlyRateMultiplier() : 1.5;
-        double expectedHoursPerDay = settings.getWorkingHoursPerDay() != null ? settings.getWorkingHoursPerDay() : 8.0;
-
-        List<EmployeeBonus> monthBonuses = bonusRepository.findByEmployeeIdAndPayrollMonth(employeeId, payrollMonth);
+        List<EmployeeBonus> monthBonuses = bonusRepository != null ? bonusRepository.findByEmployeeIdAndPayrollMonth(employeeId, payrollMonth) : List.of();
         BigDecimal computedBonus = BigDecimal.ZERO;
         BigDecimal computedYearlyBonus = BigDecimal.ZERO;
         for (EmployeeBonus bonus : monthBonuses) {
@@ -1109,39 +1386,25 @@ public class PayrollCalculationService {
         Optional<PayrollRecord> priorRecordOpt = Optional.ofNullable(payrollRepository.findFirstByEmployeeIdAndPayrollMonthLessThanOrderByPayrollMonthDesc(employeeId, payrollMonth)).orElse(Optional.empty());
         PayrollRecord priorRecord = priorRecordOpt.orElse(null);
 
-        BigDecimal basicSalary = structure.getBasicSalary() != null ? structure.getBasicSalary() : BigDecimal.ZERO;
-        BigDecimal hra = structure.getHra() != null ? structure.getHra() : BigDecimal.ZERO;
-        BigDecimal allowances = structure.getAllowances() != null ? structure.getAllowances() : BigDecimal.ZERO;
-
         BigDecimal otherEarnings = (priorRecord != null && priorRecord.getOtherEarnings() != null)
                 ? priorRecord.getOtherEarnings() : BigDecimal.ZERO;
 
-        BigDecimal totalBaseSalaryResolved = basicSalary.add(hra).add(allowances);
-        BigDecimal dailyRateResolved = totalBaseSalaryResolved.divide(BigDecimal.valueOf(workingDaysInMonth), 2, RoundingMode.HALF_UP);
-        BigDecimal computedLopAmountResolved = dailyRateResolved.multiply(BigDecimal.valueOf(lopDays)).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal hourlyRateResolved = dailyRateResolved.divide(BigDecimal.valueOf(expectedHoursPerDay), 2, RoundingMode.HALF_UP);
-        BigDecimal computedOvertimeAmountResolved = hourlyRateResolved.multiply(BigDecimal.valueOf(totalOvertimeHours * otMultiplier)).setScale(2, RoundingMode.HALF_UP);
-
-        BigDecimal overtimeAmount = (computedOvertimeAmountResolved.compareTo(BigDecimal.ZERO) > 0)
-                ? computedOvertimeAmountResolved
+        BigDecimal overtimeAmount = computedOvertimeAmount.compareTo(BigDecimal.ZERO) > 0
+                ? computedOvertimeAmount
                 : (priorRecord != null && priorRecord.getOvertimeAmount() != null ? priorRecord.getOvertimeAmount() : BigDecimal.ZERO);
 
-        BigDecimal totalBonus = (computedBonus.compareTo(BigDecimal.ZERO) > 0)
+        BigDecimal totalBonus = computedBonus.compareTo(BigDecimal.ZERO) > 0
                 ? computedBonus
                 : (priorRecord != null && priorRecord.getBonusAmount() != null ? priorRecord.getBonusAmount() : BigDecimal.ZERO);
 
-        BigDecimal totalYearlyBonus = (computedYearlyBonus.compareTo(BigDecimal.ZERO) > 0)
+        BigDecimal totalYearlyBonus = computedYearlyBonus.compareTo(BigDecimal.ZERO) > 0
                 ? computedYearlyBonus
                 : (priorRecord != null && priorRecord.getYearlyBonusAmount() != null ? priorRecord.getYearlyBonusAmount() : BigDecimal.ZERO);
 
-        BigDecimal pfAmount = structure.getPfDeduction() != null ? structure.getPfDeduction() : BigDecimal.ZERO;
-        BigDecimal profTax = structure.getProfessionalTax() != null ? structure.getProfessionalTax() : BigDecimal.ZERO;
-        BigDecimal incomeTax = structure.getIncomeTax() != null ? structure.getIncomeTax() : BigDecimal.ZERO;
-
-        BigDecimal lopAmount = (computedLopAmountResolved.compareTo(BigDecimal.ZERO) > 0)
-                ? computedLopAmountResolved
-                : (priorRecord != null && priorRecord.getLopAmount() != null ? priorRecord.getLopAmount() : BigDecimal.ZERO);
-
+        BigDecimal pfAmount = (structure.getPfDeduction() != null ? structure.getPfDeduction() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal profTax = (structure.getProfessionalTax() != null ? structure.getProfessionalTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal incomeTax = (structure.getIncomeTax() != null ? structure.getIncomeTax() : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal lopAmount = computedLopAmount;
         BigDecimal otherDeductions = (priorRecord != null && priorRecord.getOtherDeductions() != null)
                 ? priorRecord.getOtherDeductions() : BigDecimal.ZERO;
 
@@ -1159,6 +1422,26 @@ public class PayrollCalculationService {
         BigDecimal totalDeductions = pfAmount.add(profTax).add(incomeTax).add(lopAmount).add(advanceDeduction).add(otherDeductions);
         BigDecimal grossSalary = totalEarnings;
         BigDecimal netSalary = totalEarnings.subtract(totalDeductions).max(BigDecimal.ZERO);
+
+        Map<String, BigDecimal> calculatedValues = new HashMap<>();
+        calculatedValues.put("basicSalary", basicSalary);
+        calculatedValues.put("hra", hra);
+        calculatedValues.put("allowances", allowances);
+        calculatedValues.put("overtimeAmount", computedOvertimeAmount);
+        calculatedValues.put("bonusAmount", computedBonus);
+        calculatedValues.put("yearlyBonusAmount", computedYearlyBonus);
+        calculatedValues.put("otherEarnings", BigDecimal.ZERO.setScale(2));
+        calculatedValues.put("pfAmount", pfAmount);
+        calculatedValues.put("professionalTax", profTax);
+        calculatedValues.put("taxAmount", incomeTax);
+        calculatedValues.put("lopAmount", computedLopAmount);
+        calculatedValues.put("otherDeductions", BigDecimal.ZERO.setScale(2));
+        calculatedValues.put("lopDays", BigDecimal.valueOf(lopDays).setScale(2, RoundingMode.HALF_UP));
+        calculatedValues.put("totalWorkingDays", BigDecimal.valueOf(workingDaysInMonth));
+        calculatedValues.put("presentDays", BigDecimal.valueOf(presentDays));
+        calculatedValues.put("leaveDays", BigDecimal.valueOf(leaveDays));
+        calculatedValues.put("overtimeHours", BigDecimal.valueOf(totalOvertimeHours).setScale(2, RoundingMode.HALF_UP));
+        calculatedValues.put("advanceDeductionAmount", advanceDeduction);
 
         return PayrollRecord.builder()
                 .employeeId(employeeId)
@@ -1202,6 +1485,8 @@ public class PayrollCalculationService {
                 .remainingAdvanceBalance(outstandingBalance)
                 .status(PayrollRecord.PayrollStatus.DRAFT)
                 .isLocked(false)
+                .calculatedValues(calculatedValues)
+                .manualOverrides(new HashMap<>())
                 .build();
     }
 

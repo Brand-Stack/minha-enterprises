@@ -107,6 +107,24 @@ public class PayrollRecord extends BaseEntity {
     private LocalDateTime generatedAt;
     private String generatedBy;
 
+    // Manual overrides and system-calculated values tracking
+    @Builder.Default
+    private Map<String, Boolean> manualOverrides = new HashMap<>();
+
+    @Builder.Default
+    private Map<String, BigDecimal> calculatedValues = new HashMap<>();
+
+    public boolean isFieldOverridden(String fieldName) {
+        return manualOverrides != null && Boolean.TRUE.equals(manualOverrides.get(fieldName));
+    }
+
+    public void setFieldOverridden(String fieldName, boolean overridden) {
+        if (manualOverrides == null) {
+            manualOverrides = new HashMap<>();
+        }
+        manualOverrides.put(fieldName, overridden);
+    }
+
     @Builder.Default
     private List<PayrollAuditEntry> auditLogs = new ArrayList<>();
 

@@ -15,10 +15,10 @@ import { AttendanceRecord } from '../../../core/models/attendance.model';
           <p class="subtitle">{{ isAdmin ? 'Organization-wide Attendance & Payroll Overview' : 'Personal Attendance & Leave Summary' }}</p>
         </div>
         <div class="header-actions">
-          <button mat-raised-button color="primary" class="btn-punch-in" (click)="punch('IN')">
+          <button mat-raised-button color="primary" class="btn-punch-in" disabled [disabled]="true" (click)="punch('IN')">
             <mat-icon>login</mat-icon> Punch In
           </button>
-          <button mat-raised-button color="warn" class="btn-punch-out" (click)="punch('OUT')">
+          <button mat-raised-button color="warn" class="btn-punch-out" disabled [disabled]="true" (click)="punch('OUT')">
             <mat-icon>logout</mat-icon> Punch Out
           </button>
         </div>
@@ -280,6 +280,10 @@ import { AttendanceRecord } from '../../../core/models/attendance.model';
       color: white !important;
       font-weight: 700;
       border-radius: 8px;
+    }
+    .btn-punch-in:disabled, .btn-punch-out:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .dashboard-filter-bar {

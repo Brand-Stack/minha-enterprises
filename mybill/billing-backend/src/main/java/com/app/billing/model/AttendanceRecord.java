@@ -49,6 +49,10 @@ public class AttendanceRecord extends BaseEntity {
     private AttendancePunch.PunchSource sourceOfPunch;
     private String remarks;
     
+    // Associated Leave details
+    private LeaveRequest.LeaveType leaveType;
+    private Boolean isLop;
+    
     @Builder.Default
     private List<AttendancePunch> punches = new ArrayList<>();
     

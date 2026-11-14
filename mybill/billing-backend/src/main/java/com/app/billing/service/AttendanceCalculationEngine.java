@@ -149,6 +149,8 @@ public class AttendanceCalculationEngine {
             weeklyOffDays.add("SUNDAY");
         }
         boolean isWeekend = weeklyOffDays.contains(dayOfWeek);
+        boolean isApprovedLop = approvedLeave != null && (approvedLeave.getLeaveType() == LeaveRequest.LeaveType.LOP || approvedLeave.getLeaveType() == LeaveRequest.LeaveType.UNPAID_LOP);
+        String leaveRemarks = approvedLeave != null ? ("On approved leave (" + (isApprovedLop ? "LOP" : approvedLeave.getLeaveType()) + ")") : null;
 
         if (isHoliday) {
             status = AttendanceRecord.AttendanceStatus.HOLIDAY;
@@ -185,6 +187,9 @@ public class AttendanceCalculationEngine {
                     .overtimeHours(0.0)
                     .status(status)
                     .sourceOfPunch(mainSource)
+                    .remarks(leaveRemarks)
+                    .leaveType(approvedLeave != null ? approvedLeave.getLeaveType() : null)
+                    .isLop(approvedLeave != null && isApprovedLop)
                     .punches(List.of())
                     .build();
         }
@@ -343,6 +348,9 @@ public class AttendanceCalculationEngine {
                 .overtimeHours(overtimeHours)
                 .status(status)
                 .sourceOfPunch(mainSource)
+                .remarks(leaveRemarks)
+                .leaveType(approvedLeave != null ? approvedLeave.getLeaveType() : null)
+                .isLop(approvedLeave != null && isApprovedLop)
                 .punches(sortedPunches)
                 .build();
     }

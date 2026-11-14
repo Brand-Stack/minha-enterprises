@@ -67,11 +67,11 @@ import { PermissionService } from '../../../core/services/permission.service';
           </p>
         </div>
         <div class="punch-actions">
-          <button mat-raised-button color="primary" class="btn-punch-in" (click)="doPunch('IN')" [disabled]="!canPunchIn">
+          <button mat-raised-button color="primary" class="btn-punch-in" (click)="doPunch('IN')" disabled [disabled]="true">
             <mat-icon *ngIf="!isPunching">login</mat-icon>
             <span>{{ isPunching ? 'Processing...' : 'Punch IN' }}</span>
           </button>
-          <button mat-raised-button color="warn" class="btn-punch-out" (click)="doPunch('OUT')" [disabled]="!canPunchOut">
+          <button mat-raised-button color="warn" class="btn-punch-out" (click)="doPunch('OUT')" disabled [disabled]="true">
             <mat-icon *ngIf="!isPunching">logout</mat-icon>
             <span>{{ isPunching ? 'Processing...' : 'Punch OUT' }}</span>
           </button>
